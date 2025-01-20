@@ -9,3 +9,6 @@ pytz
 djangorestframework
 edx-django-release-util
 openedx-events
+
+# To run in dev, change openedx-events for command and run make compile-requirements
+#-e /Users/leonardoberoes/Documents/Aulasneo/Projects/xqueue/openedx-events
