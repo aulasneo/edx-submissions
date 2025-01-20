@@ -12,6 +12,7 @@ from uuid import UUID
 from django.conf import settings
 from django.core.cache import cache
 from django.db import DatabaseError, IntegrityError, transaction
+from django.dispatch import receiver
 
 from openedx_events.learning.data import SubmissionData
 from openedx_events.learning.signals import SUBMISSION_CREATED
@@ -51,8 +52,12 @@ MAX_TOP_SUBMISSIONS = 100
 TOP_SUBMISSIONS_CACHE_TIMEOUT = 300
 
 
-def create_submission(student_item_dict, answer, submitted_at=None,
-                      attempt_number=None, team_submission=None, **kwargs):
+def create_submission(student_item_dict, answer,
+                      submitted_at=None,
+                      attempt_number=None,
+                      team_submission=None,
+                      event_name="default"):
+
     """Creates a submission for assessment.
 
     Generic means by which to submit an answer for assessment.
@@ -1069,3 +1074,16 @@ def send_signal(**kwargs):
         error_message = f"Unexpected error sending submission event to bus: {str(e)}"
         logger.error(error_message)
         raise SubmissionSignalError(error_message) from e
+
+
+@receiver(SUBMISSION_CREATED)
+def submission_consumer(sender, submission, **kwargs):
+    """
+    Consume submission events from the event bus.
+
+    Args:
+        sender: The sender of the event
+        submission (SubmissionData): The submission data from the event
+        **kwargs: Additional keyword arguments
+    """
+    logger.info(f"---------------------> Received submission event: {submission}")
