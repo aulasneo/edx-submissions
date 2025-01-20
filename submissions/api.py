@@ -1077,7 +1077,7 @@ def send_signal(**kwargs):
 
 
 @receiver(SUBMISSION_CREATED)
-def submission_consumer(sender, submission, **kwargs):
+def grader_consumer(sender, submission, **kwargs):
     """
     Consume submission events from the event bus.
 
