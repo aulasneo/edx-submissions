@@ -1,12 +1,10 @@
-"""
-Settings for the submissions app.
-"""
-
-
+import os
 import warnings
 
 from django.core.cache import CacheKeyWarning
 from django.utils.crypto import get_random_string
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 DEBUG = True
 TEMPLATE_DEBUG = DEBUG
@@ -82,3 +80,21 @@ MIDDLEWARE = (
 )
 
 TEST_APPS = ('submissions',)
+
+# URL to use when referring to static files located in STATIC_ROOT.
+STATIC_URL = '/static/'
+
+# Additional locations of static files
+STATICFILES_DIRS = [
+    # Add paths to your static files directories here
+    # Example: os.path.join(BASE_DIR, "static"),
+]
+
+# The absolute path to the directory where collectstatic will collect static files for deployment.
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+
+# URL to use when referring to media files located in MEDIA_ROOT.
+MEDIA_URL = '/media/'
+
+# The absolute path to the directory where media files will be stored.
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
