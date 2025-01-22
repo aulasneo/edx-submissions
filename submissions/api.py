@@ -28,7 +28,7 @@ from submissions.models import (
     StudentItem,
     Submission,
     score_reset,
-    score_set
+    score_set, SubmissionQueueRecord
 )
 from submissions.serializers import (
     ScoreSerializer,
@@ -48,7 +48,50 @@ MAX_TOP_SUBMISSIONS = 100
 TOP_SUBMISSIONS_CACHE_TIMEOUT = 300
 
 
-def create_submission(student_item_dict, answer, submitted_at=None, attempt_number=None, team_submission=None):
+def _create_submission_queue_record(submission, event_data):
+    """
+    Creates a SubmissionQueueRecord for a given submission.
+
+    Args:
+        submission (Submission): The submission object to create a queue record for
+        event_data (dict): Data to be included in the queue record. Must include at least
+            a 'queue_name' key.
+
+    Returns:
+        SubmissionQueueRecord: The created queue record
+
+    Raises:
+        SubmissionInternalError: If there's an error creating the queue record
+        ValueError: If event_data doesn't contain required queue_name
+    """
+
+    if not event_data or 'queue_name' not in event_data:
+        raise ValueError("event_data must contain 'queue_name'")
+
+    try:
+        queue_record = SubmissionQueueRecord.objects.create(
+            submission=submission,
+            **event_data
+        )
+        return queue_record
+
+    except DatabaseError as error:
+        error_message = (
+            f"An error occurred while creating queue record for submission {submission.uuid} "
+            f"with event data: {event_data}"
+        )
+        logger.exception(error_message)
+        raise SubmissionInternalError(error_message) from error
+
+
+
+def create_submission(
+                      student_item_dict, answer,
+                      submitted_at=None,
+                      attempt_number=None,
+                      team_submission=None,
+                      **event_data
+                      ):
     """Creates a submission for assessment.
 
     Generic means by which to submit an answer for assessment.
@@ -69,6 +112,13 @@ def create_submission(student_item_dict, answer, submitted_at=None, attempt_numb
             submission, as specified by the submitted_at time, and use its
             attempt_number plus one.
 
+        team_submission (TeamSubmission, optional): The team submission this individual
+            submission is associated with, if any.
+
+        event_data (dict, optional): If provided, creates a SubmissionQueueRecord
+            for this submission. Must contain at least a 'queue_name' key.
+
+
     Returns:
         dict: A representation of the created Submission. The submission
         contains five attributes: student_item, attempt_number, submitted_at,
@@ -85,6 +135,7 @@ def create_submission(student_item_dict, answer, submitted_at=None, attempt_numb
             attempt_number is negative, or the given submitted_at time is invalid.
         SubmissionInternalError: Raised when submission access causes an
             internal error.
+        ValueError: If event_data is provided but missing required queue_name.
 
     Examples:
         >>> student_item_dict = dict(
@@ -103,9 +154,9 @@ def create_submission(student_item_dict, answer, submitted_at=None, attempt_numb
         }
 
     """
+
     student_item_model = _get_or_create_student_item(student_item_dict)
     if attempt_number is None:
-        first_submission = None
         attempt_number = 1
         try:
             first_submission = Submission.objects.filter(student_item=student_item_model).first()
@@ -134,7 +185,11 @@ def create_submission(student_item_dict, answer, submitted_at=None, attempt_numb
         submission_serializer = SubmissionSerializer(data=model_kwargs)
         if not submission_serializer.is_valid():
             raise SubmissionRequestError(field_errors=submission_serializer.errors)
-        submission_serializer.save()
+
+        submission_instance = submission_serializer.save()
+
+        if event_data:
+            _create_submission_queue_record(submission_instance, event_data)
 
         sub_data = submission_serializer.data
         _log_submission(sub_data, student_item_dict)
