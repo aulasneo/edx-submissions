@@ -31,6 +31,7 @@ from submissions.models import (
     ScoreSummary,
     StudentItem,
     Submission,
+    SubmissionFileManager,
     score_reset,
     score_set
 )
@@ -77,8 +78,13 @@ def create_external_grader_detail(submission, event_data):
             queue_name=event_data['queue_name'],
             grader_file_name=event_data.get('grader_file_name', ''),
             points_possible=event_data.get('points_possible', 1),
-
         )
+
+        files_dict = event_data.get('files')
+        if files_dict:
+            file_manager = SubmissionFileManager(queue_record)
+            file_manager.process_files(files_dict)
+
         return queue_record
 
     except DatabaseError as error:
