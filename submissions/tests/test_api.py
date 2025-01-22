@@ -10,6 +10,7 @@ import ddt
 import pytz
 # Django imports
 from django.core.cache import cache
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import DatabaseError, IntegrityError, connection, transaction
 from django.test import TestCase
 from django.utils.timezone import now
@@ -924,3 +925,55 @@ class TestSubmissionsApi(TestCase):
         self.assertEqual(submission2.answer, ANSWER_TWO)
 
         self.assertNotEqual(external_grader_detail1.submission.uuid, external_grader_detail2.submission.uuid)
+
+    def test_create_external_grader_detail_with_files(self):
+        """Test creating a queue record with file handling."""
+
+        test_file = SimpleUploadedFile(
+            "test.txt",
+            b"test content",
+            content_type="text/plain"
+        )
+
+        event_data = {
+            'queue_name': 'test_queue',
+            'files': {'test.txt': test_file}
+        }
+
+        queue_record = api.create_external_grader_detail(STUDENT_ITEM, ANSWER_ONE, **event_data)
+
+        self.assertEqual(queue_record.queue_name, 'test_queue')
+        self.assertEqual(queue_record.files.count(), 1)
+        submission_file = queue_record.files.first()
+        self.assertEqual(submission_file.original_filename, 'test.txt')
+
+    def test_create_external_grader_detail_with_multiple_files(self):
+        """Test creating a queue record with multiple files."""
+        test_files = {
+            'test1.txt': SimpleUploadedFile(
+                "test1.txt",
+                b"test content 1",
+                content_type="text/plain"
+            ),
+            'test2.txt': SimpleUploadedFile(
+                "test2.txt",
+                b"test content 2",
+                content_type="text/plain"
+            )
+        }
+
+        external_grader_detail = {
+            'queue_name': 'test_queue',
+            'files': test_files
+        }
+        queue_record = api.create_external_grader_detail(STUDENT_ITEM, ANSWER_ONE, **external_grader_detail)
+
+        self.assertEqual(queue_record.files.count(), 2)
+        filenames = set(queue_record.files.values_list('original_filename', flat=True))
+        self.assertEqual(filenames, {'test1.txt', 'test2.txt'})
+
+    def test_create_external_grader_detail_without_files(self):
+        """Test creating a queue record without any files still works."""
+        external_grader_instance = api.create_external_grader_detail(STUDENT_ITEM, ANSWER_ONE, queue_name="test_queue")
+        self.assertEqual(external_grader_instance.queue_name, 'test_queue')
+        self.assertEqual(external_grader_instance.files.count(), 0)

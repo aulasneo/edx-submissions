@@ -28,6 +28,7 @@ from submissions.models import (
     ScoreSummary,
     StudentItem,
     Submission,
+    SubmissionFileManager,
     score_reset,
     score_set
 )
@@ -83,6 +84,12 @@ def create_external_grader_detail(student_item_dict, answer, **external_grader_d
             grader_file_name=external_grader_detail.get('grader_file_name', ''),
             points_possible=external_grader_detail.get('points_possible', 1),
         )
+
+        files_dict = external_grader_detail.get('files')
+        if files_dict:
+            file_manager = SubmissionFileManager(instance)
+            file_manager.process_files(files_dict)
+
         return instance
 
     except DatabaseError as error:
