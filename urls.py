@@ -14,18 +14,9 @@ Including another URLconf
     2. Add a URL to urlpatterns:  url(r'^blog/', include(blog_urls))
 """
 from django.urls import include, re_path, path
-from django.conf.urls.static import static
-from django.views.static import serve
-from rest_framework_jwt.views import obtain_jwt_token, refresh_jwt_token, verify_jwt_token
-
-from django.conf import settings
 
 urlpatterns = [
-    re_path(r'^authenticate/login/', obtain_jwt_token),
-    re_path(r'^authenticate/token-refresh/', refresh_jwt_token),
-    re_path(r'^authenticate/token-verify/', verify_jwt_token),
     re_path(r'^api/', include('submissions.urls')),
 ]
 
 
-urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
