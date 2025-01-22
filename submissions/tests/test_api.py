@@ -15,7 +15,7 @@ from freezegun import freeze_time
 
 from submissions import api
 from submissions.errors import SubmissionInternalError
-from submissions.models import ScoreAnnotation, ScoreSummary, StudentItem, Submission, score_set
+from submissions.models import ScoreAnnotation, ScoreSummary, StudentItem, Submission, score_set, SubmissionQueueRecord
 from submissions.serializers import StudentItemSerializer
 
 STUDENT_ITEM = {
@@ -863,3 +863,107 @@ class TestSubmissionsApi(TestCase):
                 mock_get_item.side_effect = StudentItem.DoesNotExist
                 with self.assertRaisesMessage(SubmissionInternalError, "An error occurred creating student item"):
                     api._get_or_create_student_item(STUDENT_ITEM)  # pylint: disable=protected-access
+
+    """ _create_submission_queue_record unit tests """
+
+    def test_create_submission_queue_record_directly(self):
+        """Test the direct creation of a submission queue record."""
+        student_item = self._get_student_item(STUDENT_ITEM)
+        submission = Submission.objects.create(
+            student_item=student_item,
+            answer=ANSWER_ONE,
+            attempt_number=1
+        )
+
+        event_data = {'queue_name': 'test_queue'}
+        queue_record = api._create_submission_queue_record(submission, event_data)
+
+        self.assertEqual(queue_record.submission.id, submission.id)
+        self.assertEqual(queue_record.queue_name, 'test_queue')
+
+    def test_create_submission_queue_record_directly_missing_queue_name(self):
+        """Test that _create_submission_queue_record validates queue_name existence."""
+        student_item = self._get_student_item(STUDENT_ITEM)
+        submission = Submission.objects.create(
+            student_item=student_item,
+            answer=ANSWER_ONE,
+            attempt_number=1
+        )
+
+        with self.assertRaises(ValueError):
+            api._create_submission_queue_record(submission, {})
+
+
+    def test_create_submission_queue_record_directly_database_error(self):
+        """Test database error handling in _create_submission_queue_record."""
+        student_item = self._get_student_item(STUDENT_ITEM)
+        submission = Submission.objects.create(
+            student_item=student_item,
+            answer=ANSWER_ONE,
+            attempt_number=1
+        )
+
+        event_data = {'queue_name': 'test_queue'}
+
+        with mock.patch.object(SubmissionQueueRecord.objects, 'create') as mock_create:
+            mock_create.side_effect = DatabaseError("Database connection failed")
+
+            with self.assertRaises(api.SubmissionInternalError):
+                api._create_submission_queue_record(submission, event_data)
+
+    """ Integration tests with create_submission """
+
+    def test_create_submission_with_queue_record(self):
+        """
+        Test that create_submission correctly creates a queue record when event_data is provided.
+        """
+        event_data = {'queue_name': 'test_queue'}
+
+        submission_dict = api.create_submission(STUDENT_ITEM, ANSWER_ONE, event_data=event_data)
+
+        student_item = self._get_student_item(STUDENT_ITEM)
+        self._assert_submission(submission_dict, ANSWER_ONE, student_item.pk, 1)
+
+        queue_record = SubmissionQueueRecord.objects.get(submission__uuid=submission_dict['uuid'])
+        self.assertEqual(queue_record.queue_name, 'test_queue')
+
+
+    def test_create_submission_missing_queue_name(self):
+        """
+        Test that creating a submission with event_data but without queue_name raises ValueError.
+        """
+        with self.assertRaises(ValueError):
+            api.create_submission(STUDENT_ITEM, ANSWER_ONE, event_data={})
+
+        submission_dict = api.create_submission(STUDENT_ITEM, ANSWER_ONE, event_data=None)
+        self.assertIsNotNone(submission_dict)
+
+    def test_create_multiple_submission_queue_records(self):
+        """
+        Test that multiple submissions can have queue records with the same queue_name.
+        """
+        event_data = {'queue_name': 'shared_queue'}
+
+        submission1_dict = api.create_submission(STUDENT_ITEM, ANSWER_ONE, event_data=event_data)
+
+        second_student = SECOND_STUDENT_ITEM
+        submission2_dict = api.create_submission(second_student, ANSWER_TWO, event_data=event_data)
+
+        queue_record1 = SubmissionQueueRecord.objects.get(submission__uuid=submission1_dict['uuid'])
+        queue_record2 = SubmissionQueueRecord.objects.get(submission__uuid=submission2_dict['uuid'])
+
+        self.assertEqual(queue_record1.queue_name, 'shared_queue')
+        self.assertEqual(queue_record2.queue_name, 'shared_queue')
+        self.assertNotEqual(queue_record1.submission.uuid, queue_record2.submission.uuid)
+
+    def test_create_submission_queue_record_database_error_integration(self):
+        """
+        Test database error handling when creating a queue record through create_submission.
+        """
+        event_data = {'queue_name': 'test_queue'}
+
+        with mock.patch.object(SubmissionQueueRecord.objects, 'create') as mock_create:
+            mock_create.side_effect = DatabaseError("Database connection failed")
+
+            with self.assertRaises(api.SubmissionInternalError):
+                api.create_submission(STUDENT_ITEM, ANSWER_ONE, event_data=event_data)
