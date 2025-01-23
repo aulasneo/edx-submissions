@@ -30,6 +30,14 @@ class SubmissionNotFoundError(SubmissionError):
     Submissions, this error may be raised.
     """
 
+class SubmissionQueueCanNotBeEmptyError(SubmissionError):
+    """
+    This error is raised when queue name is empty.
+
+    If the create submission call have an event data with queue name empty,
+    this error may be raised.
+    """
+
 
 class SubmissionRequestError(SubmissionError):
     """
