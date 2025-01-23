@@ -71,7 +71,7 @@ def _create_submission_queue_record(submission, event_data):
     try:
         queue_record = SubmissionQueueRecord.objects.create(
             submission=submission,
-            **event_data
+            queue_name=event_data['queue_name'],
         )
         return queue_record
 
