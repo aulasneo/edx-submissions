@@ -864,8 +864,6 @@ class TestSubmissionsApi(TestCase):
                 with self.assertRaisesMessage(SubmissionInternalError, "An error occurred creating student item"):
                     api._get_or_create_student_item(STUDENT_ITEM)  # pylint: disable=protected-access
 
-    """ create_submission_queue_record unit tests """
-
     def test_create_queue_record(self):
         """Test the direct creation of a submission queue record."""
         student_item =  api._get_or_create_student_item(STUDENT_ITEM)
@@ -938,8 +936,6 @@ class TestSubmissionsApi(TestCase):
 
             with self.assertRaises(api.SubmissionInternalError):
                 api.create_submission_queue_record(submission, event_data)
-
-    """ Integration tests with create_submission """
 
     def test_create_submission_with_queue_record(self):
         """
