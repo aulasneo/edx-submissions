@@ -92,9 +92,8 @@ def create_submission(
                       team_submission=None,
                       **event_data
                       ):
-    def create_submission(student_item_dict, answer, attempt_number=None, submitted_at=None, created_at=None,
-                          event_data=None):
-        """Creates a submission for assessment.
+
+    """Creates a submission for assessment.
 
         Generic means by which to submit an answer for assessment.
 
@@ -155,6 +154,7 @@ def create_submission(
                 'answer': u'The answer is 42.'
             }
         """
+
     student_item_model = _get_or_create_student_item(student_item_dict)
     if attempt_number is None:
         attempt_number = 1
