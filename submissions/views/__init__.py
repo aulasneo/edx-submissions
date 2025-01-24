@@ -43,6 +43,3 @@ def get_submissions_for_student_item(request, course_id, student_id, item_id):
         context["error"] = "The specified student item was not found."
 
     return render(request, 'submissions.html', context)
-
-
-
