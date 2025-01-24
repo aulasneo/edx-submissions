@@ -10,15 +10,18 @@ need to then generate a matching migration for it using:
 """
 
 import logging
+from datetime import timedelta
 from uuid import uuid4
 
+from django.conf import settings
 from django.contrib import auth
-from django.db import DatabaseError, models
+from django.db import DatabaseError, models, transaction
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import Signal, receiver
 from django.utils.timezone import now
 from jsonfield import JSONField
 from model_utils.models import TimeStampedModel
+from rest_framework.exceptions import ValidationError
 
 from submissions.errors import DuplicateTeamSubmissionsError, TeamSubmissionInternalError, TeamSubmissionNotFoundError
 
@@ -557,3 +560,128 @@ class ScoreAnnotation(models.Model):
 
     creator = AnonymizedUserIDField()
     reason = models.TextField()
+
+
+class SubmissionQueueManager(models.Manager):
+    """
+    Manager for handling queue-related operations on Submissions.
+    """
+
+    def get_queue_length(self, queue_name):
+        """Count pending submissions in a specific queue"""
+        return self.time_filter().filter(
+            queue_name=queue_name,
+            status='pending'
+        ).count()
+
+    def get_next_submission(self, queue_name):
+        """Safely retrieve the next available submission for processing"""
+        return self.time_filter().filter(
+            queue_name=queue_name,
+            status='pending'
+        ).select_related('submission').order_by(
+            'created_at'
+        ).select_for_update().first()
+
+    def time_filter(self):
+        """
+        Filter submissions based on processing delay window.
+        Ensures we don't process submissions that were recently updated.
+        """
+        processing_window = now() - timedelta(
+            minutes=getattr(settings, 'SUBMISSION_PROCESSING_DELAY', 60)
+        )
+        return self.filter(status_time__lte=processing_window)
+
+
+class SubmissionQueueRecord(models.Model):
+    """
+    Tracks queue processing information for a Submission.
+    """
+
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('pulled', 'Pulled'),
+        ('retired', 'Retired'),
+        ('failed', 'Failed'),
+    ]
+
+    VALID_TRANSITIONS = {
+        'pending': ['pulled', 'failed'],
+        'pulled': ['retired', 'failed'],
+        'failed': ['pending'],
+        'retired': []
+    }
+    submission = models.OneToOneField(
+        'submissions.Submission',
+        on_delete=models.CASCADE,
+        related_name='queue_record'
+    )
+
+    queue_name = models.CharField(max_length=128)
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='pending'
+    )
+
+    status_time = models.DateTimeField(default=now, db_index=True)
+    created_at = models.DateTimeField(default=now, db_index=True)
+
+    num_failures = models.PositiveIntegerField(default=0)
+
+    objects = SubmissionQueueManager()
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['queue_name', 'status', 'status_time']),
+        ]
+        ordering = ['-created_at']
+
+    def clean(self):
+        """
+        Validate state transitions and status consistency.
+        """
+        if not self.pk:  # New instance
+            return
+
+        old_instance = SubmissionQueueRecord.objects.get(pk=self.pk)
+        if not self.can_transition_to(self.status):
+            raise ValidationError(
+                f"Invalid status transition from {old_instance.status} to {self.status}"
+            )
+
+    @property
+    def is_processable(self):
+        """
+        Indicates if this submission can be processed based on its current state
+        and time since last update.
+        """
+        if self.status not in ['pending', 'failed']:
+            return False
+
+        processing_window = now() - timedelta(
+            minutes=getattr(settings, 'SUBMISSION_PROCESSING_DELAY', 60)
+        )
+        return self.status_time <= processing_window
+
+    def can_transition_to(self, new_status):
+        """Check if the transition to new_status is valid."""
+        return new_status in self.VALID_TRANSITIONS.get(self.status, [])
+
+    @transaction.atomic
+    def update_status(self, new_status):
+        """
+        Update status and timestamp atomically
+        """
+        if not self.can_transition_to(new_status):
+            raise ValueError(f"Invalid transition from {self.status} to {new_status}")
+
+        self.status = new_status
+        self.status_time = now()
+
+        if new_status == 'failed':
+            self.num_failures += 1
+            self.save(update_fields=['status', 'status_time', 'num_failures'])
+        else:
+            self.save(update_fields=['status', 'status_time'])
