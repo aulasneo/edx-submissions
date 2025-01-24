@@ -1,9 +1,13 @@
+"""
+Submission URLs.
+"""
+
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from submissions.views.grader import GraderViewSet
+from submissions.views.xqueue import XqueueViewSet
 
 router = DefaultRouter()
-router.register(r'graders', GraderViewSet, basename='grader')
+router.register(r'', XqueueViewSet, basename='xqueue')
 
 urlpatterns = [
     path('', include(router.urls)),
