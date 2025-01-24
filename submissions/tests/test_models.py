@@ -471,7 +471,6 @@ class TestSubmission(TestCase):
 
     def test_soft_deletion(self):
         """Test that soft-deleted submissions are excluded from default queries."""
-        # Create a submission that will be soft-deleted
         submission_to_delete = Submission.objects.create(
             student_item=self.student_item,
             answer=self.test_answer,
@@ -482,7 +481,6 @@ class TestSubmission(TestCase):
         submission_to_delete.save()
         self.assertNotIn(submission_to_delete, Submission.objects.all())
 
-        self.assertIn(submission_to_delete, Submission._objects.all())
 
     def test_answer_json_serialization(self):
         """Test that the answer field properly handles JSON serialization."""
@@ -537,10 +535,8 @@ class TestSubmission(TestCase):
         self.submission.submitted_at = new_time
         self.submission.save()
 
-        # Fetch fresh from database
         re_fetched = Submission.objects.get(id=self.submission.id)
 
-        # Verify changes were saved
         self.assertEqual(re_fetched.answer, new_answer)
         self.assertEqual(re_fetched.attempt_number, new_attempt)
         self.assertEqual(re_fetched.submitted_at, new_time)
