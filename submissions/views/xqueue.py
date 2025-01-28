@@ -19,6 +19,7 @@ from submissions.models import SubmissionQueueRecord
 from openedx.core.djangolib.default_auth_classes import DefaultSessionAuthentication
 from openedx.core.lib.session_serializers import PickleSerializer
 from django.contrib.auth import get_user_model
+from submissions.serializers import SubmissionQueueRecordSerializer
 
 log = logging.getLogger(__name__)
 
@@ -187,6 +188,30 @@ class XqueueViewSet(viewsets.ViewSet):
             self._compose_reply(True, 'Goodbye'),
             status=status.HTTP_200_OK
         )
+
+    @action(detail=False, methods=['get'], url_name='get_submission')
+    @transaction.atomic
+    def get_submission(self, request):
+        """
+        Endpoint for consult data to submission.
+        """
+        queue_name = request.query_params.get('queue_name', None)
+        status_param = request.query_params.get('status', None)
+        submission_id = request.query_params.get('submission_id', None)
+
+        # Filter queryset
+        queryset = SubmissionQueueRecord.objects.all().order_by('id')
+
+        if queue_name:
+            queryset = queryset.filter(queue_name=queue_name)
+        if status_param:
+            queryset = queryset.filter(status=status_param)
+        if submission_id:
+            queryset = queryset.filter(submission_id=submission_id)
+
+        # Serializar and return a response
+        serializer = SubmissionQueueRecordSerializer(queryset, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['post'], url_name='put_result')
     @transaction.atomic
