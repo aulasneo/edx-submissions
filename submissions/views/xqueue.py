@@ -2,10 +2,13 @@
 
 import json
 import logging
+import re
+import time
 import uuid
 
 from django.conf import settings
 from django.contrib.sessions.backends.cache import SessionStore
+from django.contrib.sessions.serializers import JSONSerializer
 from django.http import HttpResponse
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
@@ -18,7 +21,6 @@ from django.contrib.auth import authenticate, login, logout
 from submissions.api import set_score
 from submissions.models import SubmissionQueueRecord
 from openedx.core.djangolib.default_auth_classes import DefaultSessionAuthentication
-from openedx.core.lib.session_serializers import PickleSerializer
 from django.contrib.auth import get_user_model
 from submissions.serializers import SubmissionQueueRecordSerializer
 
@@ -134,6 +136,7 @@ class XqueueViewSet(viewsets.ViewSet):
         # Implement your file handling logic here
         return {}
 
+
     def dispatch(self, request, *args, **kwargs):
         """
         Ensures the request has a valid session before processing it by handling session validation,
@@ -179,12 +182,9 @@ class XqueueViewSet(viewsets.ViewSet):
         """
 
         log.info("Dispatching request")
-        log.info(f"Headers: {request.headers}")
 
         if hasattr(request, 'session'):
             cookie_header = request.headers.get('Cookie', '')
-            log.info(f"Cookie header: {cookie_header}")
-
             cookies = {}
             if cookie_header:
                 for cookie in cookie_header.split(';'):
@@ -192,23 +192,41 @@ class XqueueViewSet(viewsets.ViewSet):
                         name, value = cookie.strip().split('=', 1)
                         cookies[name] = value
 
-            log.info(f"Cookies parsed: {cookies}")
             session_key = cookies.get('sessionid') or cookies.get('lms_sessionid')
 
             if session_key:
                 try:
+                    if not re.match(r'^[a-zA-Z0-9]{32,}$', session_key):
+                        log.warning("Invalid session key format")
+                        return super().dispatch(request, *args, **kwargs)
+
                     new_session = SessionStore(session_key=session_key)
-                    new_session.serializer = PickleSerializer
+                    new_session.serializer = JSONSerializer
 
-                    if new_session.load():
-                        request.session = new_session
-                        if '_auth_user_id' in request.session:
+                    if not new_session.load():
+                        log.warning("Invalid session")
+                        return super().dispatch(request, *args, **kwargs)
+
+                    if new_session.get_expiry_age() <= 0:
+                        log.warning("Expired session")
+                        return super().dispatch(request, *args, **kwargs)
+
+                    request.session = new_session
+
+                    if '_auth_user_id' in request.session:
+                        try:
                             User = get_user_model()
-                            request.user = User.objects.get(pk=request.session['_auth_user_id'])
+                            request.user = User.objects.get(
+                                pk=request.session['_auth_user_id']
+                            )
+                        except User.DoesNotExist:
+                            log.warning("User not found for session")
+                            return super().dispatch(request, *args, **kwargs)
 
-                        log.info(f"Request user: {request.user}")
                 except Exception as e:
-                    log.error(f"Error loading session: {str(e)}")
+                    log.error(f"Session validation error: {type(e).__name__}")
+                    if settings.DEBUG:
+                        log.error(str(e))
 
         return super().dispatch(request, *args, **kwargs)
 
@@ -235,16 +253,11 @@ class XqueueViewSet(viewsets.ViewSet):
         if user is not None:
             login(request, user)
 
-            log.info(f"Session after login: {request.session.session_key}")
-            log.info(f"Session cookie name: {settings.SESSION_COOKIE_NAME}")
-            log.info(f"Session cookie domain: {settings.SESSION_COOKIE_DOMAIN}")
-
             response = Response(
                 {'return_code': 0, 'content': 'Logged in'},
                 status=status.HTTP_200_OK
             )
             log.info(f"Response headers: {response.headers}")
-
             response["Set-Cookie"] = f"sessionid={request.session.session_key}; HttpOnly; Path=/"
 
             return response
@@ -390,3 +403,7 @@ class XqueueViewSet(viewsets.ViewSet):
             'return_code': 0 if success else 1,
             'content': content
         }
+
+    @action(detail=False, methods=['post'], url_name='status')
+    def status(self, request):
+        return HttpResponse(self._compose_reply(success=True, content='OK'))
