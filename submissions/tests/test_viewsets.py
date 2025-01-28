@@ -7,6 +7,8 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 from django.test import override_settings
+from django.utils import timezone
+import uuid
 
 from submissions.models import SubmissionQueueRecord
 from submissions.tests.factories import SubmissionFactory, SubmissionQueueRecordFactory
@@ -29,7 +31,78 @@ class TestXqueueViewSet(APITestCase):
             num_failures=0
         )
         self.url = reverse('xqueue-put_result')
+        self.get_submission_url = reverse('xqueue-get_submission')
+        
+    def test_get_submission_missing_queue_name(self):
+        """Test error when queue_name parameter is missing."""
+        response = self.client.get(self.get_submission_url)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data,
+            {'success': False, 'message': "'get_submission' must provide parameter 'queue_name'"}
+        )
 
+    def test_get_submission_queue_empty(self):
+        """Test error when the specified queue is empty."""
+        queue_name = 'empty_queue'
+        # Asegurar que la cola esté vacía
+        SubmissionQueueRecord.objects.filter(queue_name=queue_name).delete()
+        response = self.client.get(self.get_submission_url, {'queue_name': queue_name})
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(
+            response.data,
+            {'success': False, 'message': f"Queue '{queue_name}' is empty"}
+        )
+
+    @patch('submissions.views.xqueue.timezone.now', return_value=timezone.now())
+    @patch('submissions.views.xqueue.uuid.uuid4', return_value=str(uuid.uuid4()))
+    def test_get_submission_success(self, mock_uuid, mock_now):
+        """Test successfully retrieving a submission from the queue."""
+        queue_name = 'prueba'
+        new_submission = SubmissionFactory()
+        submission_queue_record = SubmissionQueueRecordFactory(
+            queue_name=queue_name,
+            status='pending',
+            submission=new_submission
+        )
+
+        response = self.client.get(self.get_submission_url, {'queue_name': queue_name})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data['success'])
+        content = response.data['content']
+
+        # Validar contenido de la respuesta
+        xqueue_header = json.loads(content['xqueue_header'])
+        self.assertEqual(xqueue_header['submission_id'], new_submission.id)
+        self.assertEqual(xqueue_header['submission_key'], str(mock_uuid.return_value))
+        self.assertEqual(content['xqueue_body'], new_submission.answer)
+        self.assertEqual(content['xqueue_files'], '{}')
+
+        # Verificar cambios en el registro
+        submission_queue_record.refresh_from_db()
+        self.assertEqual(submission_queue_record.status, 'pulled')
+        self.assertEqual(submission_queue_record.pullkey, str(mock_uuid.return_value))
+        self.assertIsNotNone(submission_queue_record.status_time)
+
+    @patch('submissions.views.xqueue.SubmissionQueueRecord.update_status', side_effect=ValueError('Invalid transition'))
+    def test_get_submission_invalid_transition(self, mock_update_status):
+        """
+        Test get_submission when there is an invalid state transition (ValueError).
+        """
+        queue_name = 'prueba'
+        new_submission = SubmissionFactory()
+        SubmissionQueueRecordFactory(
+            submission=new_submission,
+            queue_name=queue_name,
+            status='failed'  # Estado que no permite transición a 'pulled'
+        )
+
+        response = self.client.get(self.get_submission_url, {'queue_name': queue_name})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data,
+            {'success': False, 'message': "Error processing submission: Invalid transition"}
+        )
 
     def test_put_result_success(self):
         """
