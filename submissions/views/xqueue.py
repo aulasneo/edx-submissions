@@ -3,24 +3,22 @@
 import json
 import logging
 import re
-import time
 
 from django.conf import settings
 from django.contrib.sessions.backends.cache import SessionStore
 from django.contrib.sessions.serializers import JSONSerializer
 from django.http import HttpResponse
 from rest_framework import viewsets, status
+from rest_framework.authentication import SessionAuthentication
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.db import transaction
 from django.utils import timezone
-from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth import authenticate, login, logout, get_user_model
 
 from submissions.api import set_score
 from submissions.models import SubmissionQueueRecord
-from openedx.core.djangolib.default_auth_classes import DefaultSessionAuthentication
-from django.contrib.auth import get_user_model
 from submissions.serializers import SubmissionQueueRecordSerializer
 
 log = logging.getLogger(__name__)
@@ -45,7 +43,7 @@ class XqueueViewSet(viewsets.ViewSet):
     - logout: Endpoint for ending user sessions
     """
 
-    authentication_classes = [DefaultSessionAuthentication]
+    authentication_classes = [SessionAuthentication]
 
     def get_permissions(self):
         """
