@@ -3,14 +3,19 @@ Tests for XQueue API views.
 """
 import json
 from unittest.mock import patch
+
+from django.contrib.auth import get_user_model
 from django.urls import reverse
 from rest_framework import status
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.test import APITestCase
 from django.test import override_settings
 
 from submissions.models import SubmissionQueueRecord
 from submissions.tests.factories import SubmissionFactory, SubmissionQueueRecordFactory
+from submissions.views.xqueue import XqueueViewSet
 
+User = get_user_model()
 
 @override_settings(ROOT_URLCONF='submissions.urls')
 class TestXqueueViewSet(APITestCase):
@@ -21,6 +26,10 @@ class TestXqueueViewSet(APITestCase):
     def setUp(self):
         """Set up test data."""
         super().setUp()
+        self.user = User.objects.create_user(
+            username='testuser',
+            password='testpass'
+        )
         self.submission = SubmissionFactory()
         self.queue_record = SubmissionQueueRecordFactory(
             submission=self.submission,
@@ -29,12 +38,17 @@ class TestXqueueViewSet(APITestCase):
             num_failures=0
         )
         self.url = reverse('xqueue-put_result')
-
+        self.url_login = reverse('xqueue-login')
+        self.url_logout = reverse('xqueue-logout')
+        self.url_status = reverse('xqueue-status')
 
     def test_put_result_success(self):
         """
         Test successful grade submission through put_result endpoint.
         """
+        self.client.login(username='testuser', password='testpass')
+        response = self.client.post(self.url_status)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
         score_data = {
             'score': 1
         }
@@ -60,6 +74,9 @@ class TestXqueueViewSet(APITestCase):
         """
         Test put_result with non-existent submission ID.
         """
+        self.client.login(username='testuser', password='testpass')
+        response = self.client.post(self.url_status)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
         payload = {
             'xqueue_header': json.dumps({
                 'submission_id': 99999,
@@ -79,6 +96,9 @@ class TestXqueueViewSet(APITestCase):
         """
         Test put_result with incorrect submission key.
         """
+        self.client.login(username='testuser', password='testpass')
+        response = self.client.post(self.url_status)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
         payload = {
             'xqueue_header': json.dumps({
                 'submission_id': self.submission.id,
@@ -98,6 +118,9 @@ class TestXqueueViewSet(APITestCase):
         """
         Test put_result with malformed request data.
         """
+        self.client.login(username='testuser', password='testpass')
+        response = self.client.post(self.url_status)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
         invalid_payloads = [
             {},
             {'xqueue_header': 'not_json'},
@@ -117,6 +140,9 @@ class TestXqueueViewSet(APITestCase):
         """
         Test put_result handling when set_score fails.
         """
+        self.client.login(username='testuser', password='testpass')
+        response = self.client.post(self.url_status)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
         payload = {
             'xqueue_header': json.dumps({
                 'submission_id': self.submission.id,
@@ -139,6 +165,9 @@ class TestXqueueViewSet(APITestCase):
         """
         Test submission auto-retirement after too many failures.
         """
+        self.client.login(username='testuser', password='testpass')
+        response = self.client.post(self.url_status)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
         initial_failures = 29
         self.queue_record.num_failures = initial_failures
         self.queue_record.save()
@@ -173,6 +202,9 @@ class TestXqueueViewSet(APITestCase):
         }
 
         with patch('submissions.api.set_score') as mock_set_score:
+            self.client.login(username='testuser', password='testpass')
+            response = self.client.post(self.url_status)
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
             mock_set_score.return_value = True
             self.client.post(self.url, payload, format='json')
 
@@ -180,3 +212,116 @@ class TestXqueueViewSet(APITestCase):
             "Successfully updated submission score for submission %s",
             self.submission.id
         )
+
+    def test_get_permissions_login(self):
+        """Test permissions for login endpoint"""
+        viewset = XqueueViewSet()
+        viewset.action = 'login'
+        permissions = viewset.get_permissions()
+        self.assertTrue(any(isinstance(p, AllowAny) for p in permissions))
+
+    def test_get_permissions_other_actions(self):
+        """Test permissions for non-login endpoints"""
+        viewset = XqueueViewSet()
+        viewset.action = 'logout'
+        permissions = viewset.get_permissions()
+        self.assertTrue(all(isinstance(p, IsAuthenticated) for p in permissions))
+
+    def test_dispatch_valid_session(self):
+        """Test dispatch with valid session"""
+        self.client.login(username='testuser', password='testpass')
+        response = self.client.post(self.url_status)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_dispatch_invalid_session(self):
+        """Test dispatch with invalid session"""
+        # Create invalid session cookie
+        self.client.cookies['sessionid'] = 'invalid_session_id'
+        response = self.client.get(self.url_status)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_login_success(self):
+        """Test successful login"""
+        data = {
+            'username': 'testuser',
+            'password': 'testpass'
+        }
+        response = self.client.post(self.url_login, data)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['return_code'], 0)
+        self.assertTrue('sessionid' in response.cookies)
+
+    def test_login_missing_credentials(self):
+        """Test login with missing credentials"""
+        response = self.client.post(self.url_login, {})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['return_code'], 1)
+
+    def test_login_invalid_credentials(self):
+        """Test login with invalid credentials"""
+        data = {
+            'username': 'testuser',
+            'password': 'wrongpass'
+        }
+        response = self.client.post(self.url_login, data)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(response.data['return_code'], 1)
+
+    def test_logout(self):
+        """Test logout functionality"""
+        self.client.login(username='testuser', password='testpass')
+        response = self.client.post(self.url_logout)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['return_code'], 0)
+
+    def test_validate_grader_reply_valid(self):
+        """Test _validate_grader_reply with valid data"""
+        viewset = XqueueViewSet()
+        external_reply = {
+            'xqueue_header': json.dumps({
+                'submission_id': 123,
+                'submission_key': 'test_key'
+            }),
+            'xqueue_body': json.dumps({
+                'score': 0.8
+            })
+        }
+        valid, sub_id, sub_key, score_msg, points = viewset._validate_grader_reply(external_reply)
+        self.assertTrue(valid)
+        self.assertEqual(sub_id, 123)
+        self.assertEqual(sub_key, 'test_key')
+        self.assertEqual(points, 0.8)
+
+    def test_validate_grader_reply_invalid(self):
+        """Test _validate_grader_reply with invalid data"""
+        viewset = XqueueViewSet()
+        invalid_replies = [
+            None,
+            {},
+            {'xqueue_header': 'invalid_json'},
+            {'xqueue_header': '{}', 'xqueue_body': 'invalid_json'},
+            {'xqueue_header': json.dumps({}), 'xqueue_body': '{}'}
+        ]
+        for reply in invalid_replies:
+            valid, *_ = viewset._validate_grader_reply(reply)
+            self.assertFalse(valid)
+
+    def test_compose_reply(self):
+        """Test _compose_reply method"""
+        viewset = XqueueViewSet()
+        success_reply = viewset._compose_reply(True, "Success message")
+        self.assertEqual(success_reply['return_code'], 0)
+        self.assertEqual(success_reply['content'], "Success message")
+
+        error_reply = viewset._compose_reply(False, "Error message")
+        self.assertEqual(error_reply['return_code'], 1)
+        self.assertEqual(error_reply['content'], "Error message")
+
+    def test_status_endpoint(self):
+        """Test status endpoint"""
+        self.client.login(username='testuser', password='testpass')
+        response = self.client.post(self.url_status)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        content = response.content.decode('utf-8')
+        self.assertIn('return_code', content)
+        self.assertIn('content', content)
