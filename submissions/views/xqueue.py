@@ -3,6 +3,7 @@
 import json
 import logging
 import re
+import uuid
 
 from django.conf import settings
 from django.contrib.sessions.backends.cache import SessionStore
@@ -204,25 +205,85 @@ class XqueueViewSet(viewsets.ViewSet):
     @transaction.atomic
     def get_submission(self, request):
         """
-        Endpoint for consult data to submission.
+        Endpoint for retrieving a single unprocessed submission from a specified queue.
+        Query Parameters:
+        - queue_name (required): Name of the queue to pull from
+        Returns:
+        - Submission data with pull information if successful
+        - Error message if queue is empty or invalid
         """
-        queue_name = request.query_params.get('queue_name', None)
-        status_param = request.query_params.get('status', None)
-        submission_id = request.query_params.get('submission_id', None)
+        queue_name = request.query_params.get('queue_name')
+        if not queue_name:
+            return Response(
+                {'success': False, 'message': "'get_submission' must provide parameter 'queue_name'"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-        # Filter queryset
-        queryset = SubmissionQueueRecord.objects.all().order_by('id')
+        # if queue_name not in settings.XQUEUES: TODO: La descripcion
+        #if queue_name not in {'prueba', 'test-pull'}:
+        #    return Response(
+        #        {'success': False, 'message': f"Queue '{queue_name}' not found"},
+        #        status=status.HTTP_404_NOT_FOUND
+        #    )
 
-        if queue_name:
-            queryset = queryset.filter(queue_name=queue_name)
-        if status_param:
-            queryset = queryset.filter(status=status_param)
-        if submission_id:
-            queryset = queryset.filter(submission_id=submission_id)
+        submission_record = SubmissionQueueRecord.objects.filter(
+            queue_name=queue_name,
+            status__in=['pending', 'failed']
+        ).select_related('submission').order_by('status_time').first()
 
-        # Serializar and return a response
-        serializer = SubmissionQueueRecordSerializer(queryset, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        if not submission_record:
+            return Response(
+                {'success': False, 'message': f"Queue '{queue_name}' is empty"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        pull_time = timezone.now()
+        pullkey = str(uuid.uuid4())
+        grader_id = request.META.get('REMOTE_ADDR', '')
+
+        try:
+            submission_record.update_status('pulled')
+            submission_record.pullkey = pullkey
+            submission_record.status_time = pull_time
+            submission_record.save(update_fields=['pullkey', 'status_time'])
+
+            ext_header = {
+                'submission_id': submission_record.submission.id,
+                'submission_key': pullkey
+            }
+            submission_data = submission_record.submission.answer
+
+            payload = {
+                'xqueue_header': json.dumps(ext_header),
+                'xqueue_body': submission_data,
+                'xqueue_files': json.dumps(submission_record.submission.get_files())
+                if hasattr(submission_record.submission, 'get_files') else '{}'
+            }
+            return Response(
+                {'success': True, 'content': payload},
+                status=status.HTTP_200_OK
+            )
+
+        except ValueError as e:
+            return Response(
+                {'success': False, 'message': f"Error processing submission: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        except Exception as e:
+            submission_record.update_status('failed')
+            log.error(f"Error processing submission: {str(e)}")
+            return Response(
+                {'success': False, 'message': f"Error processing submission"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    def get_files(self):
+        """
+        Helper method to get submission files if they exist.
+        Can be implemented based on your specific file handling needs.
+        """
+        # Implement your file handling logic here
+        return {}
 
     @action(detail=False, methods=['post'], url_name='put_result')
     @transaction.atomic
