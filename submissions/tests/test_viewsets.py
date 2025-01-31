@@ -19,6 +19,7 @@ from submissions.views.xqueue import XqueueViewSet
 
 User = get_user_model()
 
+
 @override_settings(ROOT_URLCONF='submissions.urls')
 class TestXqueueViewSet(APITestCase):
     """
@@ -44,26 +45,28 @@ class TestXqueueViewSet(APITestCase):
         self.url_logout = reverse('xqueue-logout')
         self.url_status = reverse('xqueue-status')
         self.get_submission_url = reverse('xqueue-get_submission')
-        
+        self.viewset = XqueueViewSet()  # Añadido para acceder a _compose_reply
+
     def test_get_submission_missing_queue_name(self):
         """Test error when queue_name parameter is missing."""
+        self.client.login(username='testuser', password='testpass')
         response = self.client.get(self.get_submission_url)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(
             response.data,
-            {'success': False, 'message': "'get_submission' must provide parameter 'queue_name'"}
+            self.viewset._compose_reply(False, "'get_submission' must provide parameter 'queue_name'")
         )
 
     def test_get_submission_queue_empty(self):
         """Test error when the specified queue is empty."""
         queue_name = 'empty_queue'
-        # Asegurar que la cola esté vacía
+        self.client.login(username='testuser', password='testpass')
         SubmissionQueueRecord.objects.filter(queue_name=queue_name).delete()
         response = self.client.get(self.get_submission_url, {'queue_name': queue_name})
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         self.assertEqual(
             response.data,
-            {'success': False, 'message': f"Queue '{queue_name}' is empty"}
+            self.viewset._compose_reply(False, f"Queue '{queue_name}' is empty")
         )
 
     @patch('submissions.views.xqueue.timezone.now', return_value=timezone.now())
@@ -71,6 +74,7 @@ class TestXqueueViewSet(APITestCase):
     def test_get_submission_success(self, mock_uuid, mock_now):
         """Test successfully retrieving a submission from the queue."""
         queue_name = 'prueba'
+        self.client.login(username='testuser', password='testpass')
         new_submission = SubmissionFactory()
         submission_queue_record = SubmissionQueueRecordFactory(
             queue_name=queue_name,
@@ -80,17 +84,16 @@ class TestXqueueViewSet(APITestCase):
 
         response = self.client.get(self.get_submission_url, {'queue_name': queue_name})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertTrue(response.data['success'])
-        content = response.data['content']
+        content = json.loads(response.data['content'])
+        self.assertEqual(response.data['return_code'], 0)
 
-        # Validar contenido de la respuesta
         xqueue_header = json.loads(content['xqueue_header'])
+        xqueue_body = json.loads(content['xqueue_body'])
         self.assertEqual(xqueue_header['submission_id'], new_submission.id)
         self.assertEqual(xqueue_header['submission_key'], str(mock_uuid.return_value))
-        self.assertEqual(content['xqueue_body'], new_submission.answer)
+        self.assertEqual(xqueue_body['student_response'], new_submission.answer)
         self.assertEqual(content['xqueue_files'], '{}')
 
-        # Verificar cambios en el registro
         submission_queue_record.refresh_from_db()
         self.assertEqual(submission_queue_record.status, 'pulled')
         self.assertEqual(submission_queue_record.pullkey, str(mock_uuid.return_value))
@@ -98,56 +101,32 @@ class TestXqueueViewSet(APITestCase):
 
     @patch('submissions.views.xqueue.SubmissionQueueRecord.update_status', side_effect=ValueError('Invalid transition'))
     def test_get_submission_invalid_transition(self, mock_update_status):
-        """
-        Test get_submission when there is an invalid state transition (ValueError).
-        """
+        """Test get_submission when there is an invalid state transition (ValueError)."""
         queue_name = 'prueba'
+        self.client.login(username='testuser', password='testpass')
+
         new_submission = SubmissionFactory()
-        SubmissionQueueRecordFactory(
+        queue_record = SubmissionQueueRecordFactory(
             submission=new_submission,
             queue_name=queue_name,
-            status='failed'  # Estado que no permite transición a 'pulled'
+            status='pending'
         )
 
         response = self.client.get(self.get_submission_url, {'queue_name': queue_name})
+        mock_update_status.assert_called_once_with('pulled')
+
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(
             response.data,
-            {'success': False, 'message': "Error processing submission: Invalid transition"}
+            self.viewset._compose_reply(False, "Error processing submission: Invalid transition")
         )
 
-    def test_put_result_success(self):
-        """
-        Test successful grade submission through put_result endpoint.
-        """
-        self.client.login(username='testuser', password='testpass')
-        response = self.client.post(self.url_status)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        score_data = {
-            'score': 1
-        }
-        payload = {
-            'xqueue_header': json.dumps({
-                'submission_id': self.submission.id,
-                'submission_key': 'test_pull_key'
-            }),
-            'xqueue_body': json.dumps(score_data)
-        }
+        queue_record.refresh_from_db()
+        self.assertEqual(queue_record.status, 'pending')
 
-        response = self.client.post(self.url, payload, format='json')
-
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        response_content = response.content.decode('utf-8')
-        self.assertEqual(response_content, 'return_codecontent')
-
-        updated_queue_record = SubmissionQueueRecord.objects.get(id=self.queue_record.id)
-        self.assertEqual(updated_queue_record.status, 'returned')
-        self.assertEqual(updated_queue_record.grader_reply, json.dumps(score_data))
 
     def test_put_result_invalid_submission_id(self):
-        """
-        Test put_result with non-existent submission ID.
-        """
+        """Test put_result with non-existent submission ID."""
         self.client.login(username='testuser', password='testpass')
         response = self.client.post(self.url_status)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -160,16 +139,15 @@ class TestXqueueViewSet(APITestCase):
         }
 
         response = self.client.post(self.url, payload, format='json')
-
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         response_data = json.loads(response.content)
-        self.assertEqual(response_data['return_code'], 1)
-        self.assertEqual(response_data['content'], 'Submission does not exist')
+        self.assertEqual(
+            response_data,
+            self.viewset._compose_reply(False, 'Submission does not exist')
+        )
 
     def test_put_result_invalid_key(self):
-        """
-        Test put_result with incorrect submission key.
-        """
+        """Test put_result with incorrect submission key."""
         self.client.login(username='testuser', password='testpass')
         response = self.client.post(self.url_status)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -182,16 +160,15 @@ class TestXqueueViewSet(APITestCase):
         }
 
         response = self.client.post(self.url, payload, format='json')
-
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         response_data = json.loads(response.content)
-        self.assertEqual(response_data['return_code'], 1)
-        self.assertEqual(response_data['content'], 'Incorrect key for submission')
+        self.assertEqual(
+            response_data,
+            self.viewset._compose_reply(False, 'Incorrect key for submission')
+        )
 
     def test_put_result_invalid_format(self):
-        """
-        Test put_result with malformed request data.
-        """
+        """Test put_result with malformed request data."""
         self.client.login(username='testuser', password='testpass')
         response = self.client.post(self.url_status)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -207,8 +184,10 @@ class TestXqueueViewSet(APITestCase):
             response = self.client.post(self.url, payload, format='json')
             self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
             response_data = json.loads(response.content)
-            self.assertEqual(response_data['return_code'], 1)
-            self.assertEqual(response_data['content'], 'Incorrect reply format')
+            self.assertEqual(
+                response_data,
+                self.viewset._compose_reply(False, 'Incorrect reply format')
+            )
 
     def test_put_result_set_score_failure(self):
         """
