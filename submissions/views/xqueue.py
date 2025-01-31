@@ -20,9 +20,16 @@ from django.contrib.auth import authenticate, login, logout, get_user_model
 
 from submissions.api import set_score
 from submissions.models import SubmissionQueueRecord
-from submissions.serializers import SubmissionQueueRecordSerializer
 
 log = logging.getLogger(__name__)
+
+
+class XQueueSessionAuthentication(SessionAuthentication):
+    def enforce_csrf(self, request):
+        if 'put_result' in request.path:
+            return None  # No aplicar CSRF para put_result
+        return super().enforce_csrf(request)
+
 
 
 class XqueueViewSet(viewsets.ViewSet):
@@ -44,7 +51,7 @@ class XqueueViewSet(viewsets.ViewSet):
     - logout: Endpoint for ending user sessions
     """
 
-    authentication_classes = [SessionAuthentication]
+    authentication_classes = [XQueueSessionAuthentication]
 
     def get_permissions(self):
         """
@@ -201,6 +208,7 @@ class XqueueViewSet(viewsets.ViewSet):
             status=status.HTTP_200_OK
         )
 
+
     @action(detail=False, methods=['get'], url_name='get_submission')
     @transaction.atomic
     def get_submission(self, request):
@@ -213,14 +221,15 @@ class XqueueViewSet(viewsets.ViewSet):
         - Error message if queue is empty or invalid
         """
         queue_name = request.query_params.get('queue_name')
+
         if not queue_name:
             return Response(
-                {'success': False, 'message': "'get_submission' must provide parameter 'queue_name'"},
+                self._compose_reply(False, "'get_submission' must provide parameter 'queue_name'"),
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # if queue_name not in settings.XQUEUES: TODO: La descripcion
-        #if queue_name not in {'prueba', 'test-pull'}:
+        # if queue_name not in settings.XQUEUES: TODO: Define how to set this variable, maybe as a tutor config or hardcoded en edx platform
+        #if queue_name not in {'my_course_queue': 'http://172.16.0.220:8125', 'test-pull': None}:
         #    return Response(
         #        {'success': False, 'message': f"Queue '{queue_name}' not found"},
         #        status=status.HTTP_404_NOT_FOUND
@@ -228,14 +237,15 @@ class XqueueViewSet(viewsets.ViewSet):
 
         submission_record = SubmissionQueueRecord.objects.filter(
             queue_name=queue_name,
-            status__in=['pending', 'failed']
+            status__in=['pending']
         ).select_related('submission').order_by('status_time').first()
 
         if not submission_record:
             return Response(
-                {'success': False, 'message': f"Queue '{queue_name}' is empty"},
+                self._compose_reply(False, f"Queue '{queue_name}' is empty"),
                 status=status.HTTP_404_NOT_FOUND
             )
+
         pull_time = timezone.now()
         pullkey = str(uuid.uuid4())
         grader_id = request.META.get('REMOTE_ADDR', '')
@@ -250,22 +260,36 @@ class XqueueViewSet(viewsets.ViewSet):
                 'submission_id': submission_record.submission.id,
                 'submission_key': pullkey
             }
-            submission_data = submission_record.submission.answer
+            answer = submission_record.submission.answer
+            submission_data = {
+                "grader_payload": json.dumps({
+                    "grader": ""
+
+                }),
+                "student_info": json.dumps({
+                    "anonymous_student_id": str(submission_record.submission.uuid),
+                    "submission_time": str(int(submission_record.created_at.timestamp())),
+                    "random_seed": 1
+                }),
+                "student_response": answer
+            }
 
             payload = {
                 'xqueue_header': json.dumps(ext_header),
-                'xqueue_body': submission_data,
+                'xqueue_body': json.dumps(submission_data),
                 'xqueue_files': json.dumps(submission_record.submission.get_files())
                 if hasattr(submission_record.submission, 'get_files') else '{}'
             }
+
+            print(payload['xqueue_files'])
             return Response(
-                {'success': True, 'content': payload},
+                self._compose_reply(True, content=json.dumps(payload)),
                 status=status.HTTP_200_OK
             )
 
         except ValueError as e:
             return Response(
-                {'success': False, 'message': f"Error processing submission: {str(e)}"},
+                self._compose_reply(False, f"Error processing submission: {str(e)}"),
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -273,9 +297,10 @@ class XqueueViewSet(viewsets.ViewSet):
             submission_record.update_status('failed')
             log.error(f"Error processing submission: {str(e)}")
             return Response(
-                {'success': False, 'message': f"Error processing submission"},
+                self._compose_reply(False, "Error processing submission"),
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
 
     def get_files(self):
         """
@@ -284,6 +309,7 @@ class XqueueViewSet(viewsets.ViewSet):
         """
         # Implement your file handling logic here
         return {}
+
 
     @action(detail=False, methods=['post'], url_name='put_result')
     @transaction.atomic
@@ -349,7 +375,7 @@ class XqueueViewSet(viewsets.ViewSet):
                 submission_record.status = "pending"
             submission_record.save()
 
-        return HttpResponse(self._compose_reply(success=True, content=''))
+        return Response(self._compose_reply(success=True, content=''))
 
 
     def _validate_grader_reply(self, external_reply):
@@ -413,3 +439,4 @@ class XqueueViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['post'], url_name='status')
     def status(self, request):
         return HttpResponse(self._compose_reply(success=True, content='OK'))
+
