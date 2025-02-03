@@ -72,6 +72,9 @@ def create_submission_queue_record(submission, event_data):
         queue_record = SubmissionQueueRecord.objects.create(
             submission=submission,
             queue_name=event_data['queue_name'],
+            grader_file_name=event_data.get('grader_file_name', ''),
+            points_possible=event_data.get('points_possible', 1),
+
         )
         return queue_record
 
