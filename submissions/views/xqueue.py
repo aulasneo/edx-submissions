@@ -228,7 +228,8 @@ class XqueueViewSet(viewsets.ViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # if queue_name not in settings.XQUEUES: TODO: Define how to set this variable, maybe as a tutor config or hardcoded en edx platform
+        # if queue_name not in settings.XQUEUES:
+        # TODO: Define how to set this variable, maybe as a tutor config or hardcoded en edx platform
         #if queue_name not in {'my_course_queue': 'http://172.16.0.220:8125', 'test-pull': None}:
         #    return Response(
         #        {'success': False, 'message': f"Queue '{queue_name}' not found"},
@@ -248,7 +249,7 @@ class XqueueViewSet(viewsets.ViewSet):
 
         pull_time = timezone.now()
         pullkey = str(uuid.uuid4())
-        grader_id = request.META.get('REMOTE_ADDR', '')
+        # grader_id = request.META.get('REMOTE_ADDR', '')
 
         try:
             submission_record.update_status('pulled')
@@ -263,7 +264,7 @@ class XqueueViewSet(viewsets.ViewSet):
             answer = submission_record.submission.answer
             submission_data = {
                 "grader_payload": json.dumps({
-                    "grader": ""
+                    "grader": submission_record.grader_file_name,
 
                 }),
                 "student_info": json.dumps({
@@ -281,7 +282,6 @@ class XqueueViewSet(viewsets.ViewSet):
                 if hasattr(submission_record.submission, 'get_files') else '{}'
             }
 
-            print(payload['xqueue_files'])
             return Response(
                 self._compose_reply(True, content=json.dumps(payload)),
                 status=status.HTTP_200_OK
@@ -353,10 +353,10 @@ class XqueueViewSet(viewsets.ViewSet):
 
         # pylint: disable=broad-exception-caught
         try:
-            log.info("Attempting to set_score...")
+            log.info(f"Attempting to set_score...")
             set_score(str(submission_record.submission.uuid),
                       points_earned,
-                      1
+                      submission_record.points_possible,
                       )
 
             submission_record.grader_reply = score_msg

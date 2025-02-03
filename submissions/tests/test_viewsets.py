@@ -2,6 +2,7 @@
 Tests for XQueue API views.
 """
 import json
+import uuid
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -11,7 +12,6 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.test import APITestCase
 from django.test import override_settings
 from django.utils import timezone
-import uuid
 
 from submissions.models import SubmissionQueueRecord
 from submissions.tests.factories import SubmissionFactory, SubmissionQueueRecordFactory
@@ -71,7 +71,7 @@ class TestXqueueViewSet(APITestCase):
 
     @patch('submissions.views.xqueue.timezone.now', return_value=timezone.now())
     @patch('submissions.views.xqueue.uuid.uuid4', return_value=str(uuid.uuid4()))
-    def test_get_submission_success(self, mock_uuid, mock_now):
+    def test_get_submission_success(self, mock_uuid, _):
         """Test successfully retrieving a submission from the queue."""
         queue_name = 'prueba'
         self.client.login(username='testuser', password='testpass')
@@ -302,7 +302,7 @@ class TestXqueueViewSet(APITestCase):
         response = self.client.post(self.url_login, data)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['return_code'], 0)
-        self.assertTrue('sessionid' in response.cookies)
+        self.assertIn('sessionid' in response.cookies)
 
     def test_login_missing_credentials(self):
         """Test login with missing credentials"""
@@ -339,7 +339,7 @@ class TestXqueueViewSet(APITestCase):
                 'score': 0.8
             })
         }
-        valid, sub_id, sub_key, score_msg, points = viewset._validate_grader_reply(external_reply)
+        valid, sub_id, sub_key, _, points = viewset._validate_grader_reply(external_reply)
         self.assertTrue(valid)
         self.assertEqual(sub_id, 123)
         self.assertEqual(sub_key, 'test_key')
