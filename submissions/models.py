@@ -619,6 +619,9 @@ class SubmissionQueueRecord(models.Model):
     )
 
     queue_name = models.CharField(max_length=128)
+    grader_file_name = models.CharField(max_length=128, default='')
+    points_possible = models.PositiveIntegerField(default=1)
+
     status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,
