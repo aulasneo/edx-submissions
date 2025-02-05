@@ -10,6 +10,7 @@ from unittest import mock
 import pytest
 # Django imports
 from django.contrib import auth
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.utils.timezone import now
 from pytz import UTC
@@ -24,8 +25,9 @@ from submissions.models import (
     ScoreSummary,
     StudentItem,
     Submission,
+    TeamSubmission,
     SubmissionQueueRecord,
-    TeamSubmission
+    SubmissionFile
 )
 
 User = auth.get_user_model()
@@ -679,6 +681,7 @@ class TestSubmission(TestCase):
         submission_to_delete.save()
         self.assertNotIn(submission_to_delete, Submission.objects.all())
 
+
     def test_answer_json_serialization(self):
         """Test that the answer field properly handles JSON serialization."""
         test_cases = [
@@ -739,3 +742,126 @@ class TestSubmission(TestCase):
         self.assertEqual(re_fetched.answer, new_answer)
         self.assertEqual(re_fetched.attempt_number, new_attempt)
         self.assertEqual(re_fetched.submitted_at, new_time)
+
+
+class TestSubmissionFile(TestCase):
+    """
+    Test the SubmissionFile model functionality.
+    """
+
+    def setUp(self):
+        """Set up common test data."""
+
+        self.student_item = StudentItem.objects.create(
+            student_id="test_student",
+            course_id="test_course",
+            item_id="test_item"
+        )
+        self.submission = Submission.objects.create(
+            student_item=self.student_item,
+            answer="test answer",
+            attempt_number=1
+        )
+        self.queue_record = SubmissionQueueRecord.objects.create(
+            submission=self.submission,
+            queue_name="test_queue"
+        )
+
+        self.test_file = SimpleUploadedFile(
+            "test_file.txt",
+            b"test content",
+            content_type="text/plain"
+        )
+
+        self.submission_file = SubmissionFile.objects.create(
+            submission_queue=self.queue_record,
+            file=self.test_file,
+            original_filename="test_file.txt"
+        )
+
+    def test_create_submission_file(self):
+        """Test basic submission file creation."""
+        self.assertIsNotNone(self.submission_file.uid)
+        self.assertEqual(self.submission_file.original_filename, "test_file.txt")
+        self.assertEqual(self.submission_file.submission_queue, self.queue_record)
+        self.assertIsNotNone(self.submission_file.created_at)
+
+    def test_xqueue_url_format(self):
+        """Test that xqueue_url property returns the correct format."""
+        expected_url = f"/{self.queue_record.queue_name}/{self.submission_file.uid}"
+        self.assertEqual(self.submission_file.xqueue_url, expected_url)
+
+    def test_multiple_files_per_submission(self):
+        """Test that multiple files can be associated with a single submission."""
+        second_file = SimpleUploadedFile(
+            "second_file.txt",
+            b"more content",
+            content_type="text/plain"
+        )
+
+        second_submission_file = SubmissionFile.objects.create(
+            submission_queue=self.queue_record,
+            file=second_file,
+            original_filename="second_file.txt"
+        )
+
+        files = self.queue_record.files.all()
+        self.assertEqual(files.count(), 2)
+        self.assertIn(self.submission_file, files)
+        self.assertIn(second_submission_file, files)
+
+    def test_file_path_generation(self):
+        """Test that files are stored with the correct path structure."""
+        file_path = self.submission_file.file.name
+        expected_parts = [
+            self.queue_record.queue_name,
+            str(self.submission_file.uid)
+        ]
+
+        for part in expected_parts:
+            self.assertIn(part, file_path)
+
+    def test_unique_uids(self):
+        """Test that each file gets a unique UUID."""
+        second_file = SimpleUploadedFile(
+            "another_file.txt",
+            b"content",
+            content_type="text/plain"
+        )
+
+        second_submission_file = SubmissionFile.objects.create(
+            submission_queue=self.queue_record,
+            file=second_file,
+            original_filename="another_file.txt"
+        )
+
+        self.assertNotEqual(
+            self.submission_file.uid,
+            second_submission_file.uid
+        )
+
+    def test_related_name_access(self):
+        """Test accessing files through the submission queue record."""
+        files = self.queue_record.files.all()
+        self.assertEqual(files.count(), 1)
+        self.assertEqual(files.first(), self.submission_file)
+
+    def test_ordering(self):
+        """Test that files are ordered by created_at."""
+        past_time = now() - timedelta(hours=1)
+
+        older_file = SimpleUploadedFile(
+            "older_file.txt",
+            b"old content",
+            content_type="text/plain"
+        )
+        older_submission_file = SubmissionFile.objects.create(
+            submission_queue=self.queue_record,
+            file=older_file,
+            original_filename="older_file.txt",
+            created_at=past_time
+        )
+
+        files = self.queue_record.files.all()
+        self.assertEqual(files[0], self.submission_file)
+        self.assertEqual(files[1], older_submission_file)

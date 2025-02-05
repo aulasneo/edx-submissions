@@ -10,6 +10,7 @@ need to then generate a matching migration for it using:
 """
 
 import logging
+import os
 from datetime import timedelta
 from uuid import uuid4
 
@@ -19,6 +20,8 @@ from django.db import DatabaseError, models, transaction
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import Signal, receiver
 from django.utils.timezone import now
+from django.core.files.base import ContentFile
+
 from jsonfield import JSONField
 from model_utils.models import TimeStampedModel
 from rest_framework.exceptions import ValidationError
@@ -691,3 +694,95 @@ class SubmissionQueueRecord(models.Model):
             self.save(update_fields=['status', 'status_time', 'num_failures'])
         else:
             self.save(update_fields=['status', 'status_time'])
+
+
+
+def submission_file_path(instance, filename):
+    """
+    Generate file path for submission files.
+    Format: queue_name/uuid/original_filename
+    """
+    return os.path.join(
+        instance.submission_queue.queue_name,
+        str(instance.uid),
+        filename
+    )
+
+
+class SubmissionFile(models.Model):
+    """
+    Model to handle files associated with submissions
+    """
+    uid = models.UUIDField(default=uuid4, editable=False) # legacy S3 key
+    submission_queue = models.ForeignKey(
+        'submissions.SubmissionQueueRecord',
+        on_delete=models.SET_NULL,
+        related_name='files',
+        null=True,
+    )
+    file = models.FileField(
+        upload_to=submission_file_path,
+        max_length=512
+    )
+    original_filename = models.CharField(max_length=255)
+    created_at = models.DateTimeField(default=now)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['submission_queue', 'uid']),
+        ]
+
+    @property
+    def xqueue_url(self):
+        """
+        Returns URL in xqueue format: /queue_name/uid
+        """
+        return f"/{self.submission_queue.queue_name}/{self.uid}"
+
+
+class SubmissionFileManager:
+    """
+    Manages file operations for submissions
+    """
+
+    def __init__(self, submission_queue):
+        self.submission_queue = submission_queue
+
+    def process_files(self, files_dict):
+        """
+        Process uploaded files.
+        Returns URLs in xqueue compatible format.
+        """
+        files_urls = {}
+
+        for filename, file_obj in files_dict.items():
+            if isinstance(file_obj, bytes):
+                file_obj = ContentFile(file_obj, name=filename)
+
+            if hasattr(file_obj, 'read'):
+                try:
+                    file_content = file_obj.read()
+                    if isinstance(file_content, bytes):
+                        file_obj = ContentFile(file_content, name=filename)
+                except Exception as e:
+                    print(f"Error al leer el archivo {filename}: {e}")
+                    continue
+
+            submission_file = SubmissionFile.objects.create(
+                submission_queue=self.submission_queue,
+                file=file_obj,
+                original_filename=filename
+            )
+
+            files_urls[filename] = submission_file.xqueue_url
+
+        return files_urls
+
+    def get_files_for_grader(self):
+        """
+        Returns files in format expected by xwatcher
+        """
+        return {
+            file.original_filename: file.xqueue_url
+            for file in self.submission_queue.files.all()
+        }
