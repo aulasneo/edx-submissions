@@ -45,7 +45,7 @@ class TestXqueueViewSet(APITestCase):
         self.url_logout = reverse('xqueue-logout')
         self.url_status = reverse('xqueue-status')
         self.get_submission_url = reverse('xqueue-get_submission')
-        self.viewset = XqueueViewSet()  # Añadido para acceder a _compose_reply
+        self.viewset = XqueueViewSet() # Added to call compose reply method
 
     def test_get_submission_missing_queue_name(self):
         """Test error when queue_name parameter is missing."""
