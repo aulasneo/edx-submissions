@@ -32,7 +32,9 @@ from submissions.models import (
     Submission,
     SubmissionQueueRecord,
     score_reset,
-    score_set
+    score_set,
+    SubmissionQueueRecord,
+    SubmissionFileManager
 )
 from submissions.serializers import (
     ScoreSerializer,
@@ -77,8 +79,13 @@ def create_submission_queue_record(submission, event_data):
             queue_name=event_data['queue_name'],
             grader_file_name=event_data.get('grader_file_name', ''),
             points_possible=event_data.get('points_possible', 1),
-
         )
+
+        files_dict = event_data.get('files')
+        if files_dict:
+            file_manager = SubmissionFileManager(queue_record)
+            file_manager.process_files(files_dict)
+
         return queue_record
 
     except DatabaseError as error:

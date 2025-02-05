@@ -10,6 +10,7 @@ import ddt
 import pytz
 # Django imports
 from django.core.cache import cache
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import DatabaseError, IntegrityError, connection, transaction
 from django.test import TestCase
 from django.utils.timezone import now
@@ -997,3 +998,87 @@ class TestSubmissionsApi(TestCase):
 
             with self.assertRaises(api.SubmissionInternalError):
                 api.create_submission(STUDENT_ITEM, ANSWER_ONE, queue_name="test_queue", files={})
+
+
+    def test_create_submission_queue_record_with_files(self):
+        """Test creating a queue record with file handling."""
+        student_item = api._get_or_create_student_item(STUDENT_ITEM)
+        submission = Submission.objects.create(
+            student_item=student_item,
+            answer=ANSWER_ONE,
+            attempt_number=1
+        )
+
+        test_file = SimpleUploadedFile(
+            "test.txt",
+            b"test content",
+            content_type="text/plain"
+        )
+
+        event_data = {
+            'queue_name': 'test_queue',
+            'files': {'test.txt': test_file}
+        }
+
+        queue_record = api.create_submission_queue_record(submission, event_data)
+
+        self.assertEqual(queue_record.submission.id, submission.id)
+        self.assertEqual(queue_record.queue_name, 'test_queue')
+
+        self.assertEqual(queue_record.files.count(), 1)
+        submission_file = queue_record.files.first()
+        self.assertEqual(submission_file.original_filename, 'test.txt')
+
+
+    def test_create_submission_queue_record_with_multiple_files(self):
+        """Test creating a queue record with multiple files."""
+        student_item = api._get_or_create_student_item(STUDENT_ITEM)
+        submission = Submission.objects.create(
+            student_item=student_item,
+            answer=ANSWER_ONE,
+            attempt_number=1
+        )
+
+        test_files = {
+            'test1.txt': SimpleUploadedFile(
+                "test1.txt",
+                b"test content 1",
+                content_type="text/plain"
+            ),
+            'test2.txt': SimpleUploadedFile(
+                "test2.txt",
+                b"test content 2",
+                content_type="text/plain"
+            )
+        }
+
+        event_data = {
+            'queue_name': 'test_queue',
+            'files': test_files
+        }
+
+        queue_record = api.create_submission_queue_record(submission, event_data)
+
+        self.assertEqual(queue_record.files.count(), 2)
+        filenames = set(queue_record.files.values_list('original_filename', flat=True))
+        self.assertEqual(filenames, {'test1.txt', 'test2.txt'})
+
+
+    def test_create_submission_queue_record_without_files(self):
+        """Test creating a queue record without any files still works."""
+        student_item = api._get_or_create_student_item(STUDENT_ITEM)
+        submission = Submission.objects.create(
+            student_item=student_item,
+            answer=ANSWER_ONE,
+            attempt_number=1
+        )
+
+        event_data = {
+            'queue_name': 'test_queue'
+        }
+
+        queue_record = api.create_submission_queue_record(submission, event_data)
+
+        self.assertEqual(queue_record.submission.id, submission.id)
+        self.assertEqual(queue_record.queue_name, 'test_queue')
+        self.assertEqual(queue_record.files.count(), 0)
