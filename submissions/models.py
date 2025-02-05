@@ -765,7 +765,7 @@ class SubmissionFileManager:
                     if isinstance(file_content, bytes):
                         file_obj = ContentFile(file_content, name=filename)
                 except Exception as e:
-                    print(f"Error al leer el archivo {filename}: {e}")
+                    print(f"Error reading file {filename}: {e}")
                     continue
 
             submission_file = SubmissionFile.objects.create(
