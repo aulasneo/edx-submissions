@@ -97,7 +97,6 @@ def create_submission(
                       team_submission=None,
                       **event_data
                       ):
-
     """Creates a submission for assessment.
 
         Generic means by which to submit an answer for assessment.
@@ -124,7 +123,6 @@ def create_submission(
             event_data (dict, optional): If provided, creates a SubmissionQueueRecord
                 for this submission. Must contain at least a 'queue_name' key.
 
-
         Returns:
             dict: A representation of the created Submission. The submission
                 contains five attributes: student_item, attempt_number, submitted_at,
@@ -145,11 +143,11 @@ def create_submission(
 
         Examples:
             >>> student_item_dict = dict(
-            >>>    student_id="Tim",
-            >>>    item_id="item_1",
-            >>>    course_id="course_1",
-            >>>    item_type="type_one"
-            >>> )
+            ...    student_id="Tim",
+            ...    item_id="item_1",
+            ...    course_id="course_1",
+            ...    item_type="type_one"
+            ... )
             >>> create_submission(student_item_dict, "The answer is 42.", datetime.utcnow, 1)
             {
                 'student_item': 2,
