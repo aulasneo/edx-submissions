@@ -91,73 +91,80 @@ def create_submission_queue_record(submission, event_data):
 
 
 def create_submission(
-                      student_item_dict, answer,
-                      submitted_at=None,
-                      attempt_number=None,
-                      team_submission=None,
-                      **event_data
-                      ):
-    """Creates a submission for assessment.
+    student_item_dict,
+    answer,
+    submitted_at=None,
+    attempt_number=None,
+    team_submission=None,
+    **event_data
+):
+    """
+    Creates a submission for assessment.
 
-        Generic means by which to submit an answer for assessment.
+    Generic means by which to submit an answer for assessment.
 
-        Args:
-            student_item_dict (dict): The student_item this
-                submission is associated with. This is used to determine which
-                course, student, and location this submission belongs to.
+    Args:
+        student_item_dict (dict): The student_item this submission is associated with.
+            This is used to determine which course, student, and location this
+            submission belongs to.
 
-            answer (JSON-serializable): The answer given by the student to be assessed.
+        answer (JSON-serializable): The answer given by the student to be assessed.
 
-            submitted_at (datetime): The date in which this submission was submitted.
-                If not specified, defaults to the current date.
+        submitted_at (datetime, optional): The date on which this submission was submitted.
+            If not specified, defaults to the current date.
 
-            attempt_number (int): A student may be able to submit multiple attempts
-                per question. This allows the designated attempt to be overridden.
-                If the attempt is not specified, it will take the most recent
-                submission, as specified by the submitted_at time, and use its
-                attempt_number plus one.
+        attempt_number (int, optional): A student may be able to submit multiple attempts
+            per question. This allows the designated attempt to be overridden.
+            If the attempt is not specified, it will take the most recent
+            submission, as specified by the submitted_at time, and use its
+            attempt_number plus one.
 
-            team_submission (TeamSubmission, optional): The team submission this individual
-                submission is associated with, if any.
+        team_submission (TeamSubmission, optional): The team submission this individual
+            submission is associated with, if any.
 
-            event_data (dict, optional): If provided, creates a SubmissionQueueRecord
-                for this submission. Must contain at least a 'queue_name' key.
+        event_data (dict, optional): If provided, creates a SubmissionQueueRecord
+            for this submission. Must contain at least a ``queue_name`` key.
 
-        Returns:
-            dict: A representation of the created Submission. The submission
-                contains five attributes: student_item, attempt_number, submitted_at,
-                created_at, and answer. 'student_item' is the ID of the related student
-                item for the submission. 'attempt_number' is the attempt this submission
-                represents for this question. 'submitted_at' represents the time this
-                submission was submitted, which can be configured, versus the
-                'created_at' date, which is when the submission is first created.
+    Returns:
+        dict: A representation of the created Submission. The submission contains
+        five attributes: student_item, attempt_number, submitted_at, created_at,
+        and answer.
 
-        Raises:
-            SubmissionRequestError: Raised when there are validation errors for the
-                student item or submission. This can be caused by the student item
-                missing required values, the submission being too long, the
-                attempt_number is negative, or the given submitted_at time is invalid.
-            SubmissionInternalError: Raised when submission access causes an
-                internal error.
-            ValueError: If event_data is provided but missing required queue_name.
+        The returned dictionary includes:
+        - student_item: ID of the related student item for the submission
+        - attempt_number: Attempt this submission represents for this question
+        - submitted_at: Time this submission was submitted
+        - created_at: Time the submission was first created
+        - answer: The submitted answer
 
-        Examples:
-            >>> student_item_dict = dict(
-            ...    student_id="Tim",
-            ...    item_id="item_1",
-            ...    course_id="course_1",
-            ...    item_type="type_one"
-            ... )
-            >>> create_submission(student_item_dict, "The answer is 42.", datetime.utcnow, 1)
-            {
-                'student_item': 2,
-                'attempt_number': 1,
-                'submitted_at': datetime.datetime(2014, 1, 29, 17, 14, 52, 649284 tzinfo=<UTC>),
-                'created_at': datetime.datetime(2014, 1, 29, 17, 14, 52, 668850, tzinfo=<UTC>),
-                'answer': u'The answer is 42.'
-            }
+    Raises:
+        SubmissionRequestError: Raised when there are validation errors for the
+            student item or submission. This can occur due to:
+            - Student item missing required values
+            - Submission being too long
+            - Attempt number is negative
+            - Submitted time is invalid
 
-        """
+        SubmissionInternalError: Raised when submission access causes an internal error.
+
+        ValueError: If event_data is provided but missing required queue_name.
+
+    Examples:
+        >>> student_item_dict = {
+        ...     "student_id": "Tim",
+        ...     "item_id": "item_1",
+        ...     "course_id": "course_1",
+        ...     "item_type": "type_one"
+        ... }
+        >>> create_submission(student_item_dict, "The answer is 42.", datetime.utcnow(), 1)
+        {
+            'student_item': 2,
+            'attempt_number': 1,
+            'submitted_at': datetime.datetime(2014, 1, 29, 17, 14, 52, 649284, tzinfo=<UTC>),
+            'created_at': datetime.datetime(2014, 1, 29, 17, 14, 52, 668850, tzinfo=<UTC>),
+            'answer': 'The answer is 42.'
+        }
+    """
 
     student_item_model = _get_or_create_student_item(student_item_dict)
     if attempt_number is None:
