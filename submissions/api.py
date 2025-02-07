@@ -2,24 +2,26 @@
 Public interface for the submissions app.
 
 """
-
+# Stdlib imports
 import itertools
 import logging
 import operator
 import warnings
 from uuid import UUID
 
+# Django imports
 from django.conf import settings
 from django.core.cache import cache
 from django.db import DatabaseError, IntegrityError, transaction
 
+# Local imports
 # SubmissionError imported so that code importing this api has access
 from submissions.errors import (  # pylint: disable=unused-import
     SubmissionError,
     SubmissionInternalError,
     SubmissionNotFoundError,
-    SubmissionRequestError,
-    SubmissionQueueCanNotBeEmptyError
+    SubmissionQueueCanNotBeEmptyError,
+    SubmissionRequestError
 )
 from submissions.models import (
     DELETED,
@@ -28,8 +30,9 @@ from submissions.models import (
     ScoreSummary,
     StudentItem,
     Submission,
+    SubmissionQueueRecord,
     score_reset,
-    score_set, SubmissionQueueRecord
+    score_set
 )
 from submissions.serializers import (
     ScoreSerializer,
@@ -85,7 +88,6 @@ def create_submission_queue_record(submission, event_data):
         )
         logger.exception(error_message)
         raise SubmissionInternalError(error_message) from error
-
 
 
 def create_submission(
@@ -156,6 +158,7 @@ def create_submission(
                 'created_at': datetime.datetime(2014, 1, 29, 17, 14, 52, 668850, tzinfo=<UTC>),
                 'answer': u'The answer is 42.'
             }
+
         """
 
     student_item_model = _get_or_create_student_item(student_item_dict)
