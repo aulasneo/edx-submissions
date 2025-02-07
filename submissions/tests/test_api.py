@@ -1,21 +1,24 @@
 """ Api Module Tests. """
 
-
+# Stdlib imports
 import copy
 import datetime
 from unittest import mock
 
+# Third party imports
 import ddt
 import pytz
+# Django imports
 from django.core.cache import cache
 from django.db import DatabaseError, IntegrityError, connection, transaction
 from django.test import TestCase
 from django.utils.timezone import now
 from freezegun import freeze_time
 
+# Local imports
 from submissions import api
 from submissions.errors import SubmissionInternalError, SubmissionQueueCanNotBeEmptyError
-from submissions.models import ScoreAnnotation, ScoreSummary, StudentItem, Submission, score_set, SubmissionQueueRecord
+from submissions.models import ScoreAnnotation, ScoreSummary, StudentItem, Submission, SubmissionQueueRecord, score_set
 from submissions.serializers import StudentItemSerializer
 
 STUDENT_ITEM = {
@@ -864,11 +867,9 @@ class TestSubmissionsApi(TestCase):
                 with self.assertRaisesMessage(SubmissionInternalError, "An error occurred creating student item"):
                     api._get_or_create_student_item(STUDENT_ITEM)  # pylint: disable=protected-access
 
-    """ create_submission_queue_record unit tests """
-
     def test_create_queue_record(self):
         """Test the direct creation of a submission queue record."""
-        student_item =  api._get_or_create_student_item(STUDENT_ITEM)
+        student_item = api._get_or_create_student_item(STUDENT_ITEM)  # pylint: disable=protected-access
         submission = Submission.objects.create(
             student_item=student_item,
             answer=ANSWER_ONE,
@@ -883,7 +884,7 @@ class TestSubmissionsApi(TestCase):
 
     def test_create_multiple_queue_record(self):
         """Test the direct creation of a submission queue record."""
-        student_item1 =  api._get_or_create_student_item(STUDENT_ITEM)
+        student_item1 = api._get_or_create_student_item(STUDENT_ITEM)  # pylint: disable=protected-access
         submission1 = Submission.objects.create(
             student_item=student_item1,
             answer=ANSWER_ONE,
@@ -896,7 +897,7 @@ class TestSubmissionsApi(TestCase):
         self.assertEqual(queue_record1.submission.id, submission1.id)
         self.assertEqual(queue_record1.queue_name, 'test_queue')
 
-        student_item2 =  api._get_or_create_student_item(SECOND_STUDENT_ITEM)
+        student_item2 = api._get_or_create_student_item(SECOND_STUDENT_ITEM)  # pylint: disable=protected-access
         submission2 = Submission.objects.create(
             student_item=student_item2,
             answer=ANSWER_ONE,
@@ -909,10 +910,9 @@ class TestSubmissionsApi(TestCase):
         self.assertEqual(queue_record2.submission.id, submission2.id)
         self.assertEqual(queue_record2.queue_name, 'test_queue')
 
-
     def test_create_submission_queue_record_directly_missing_queue_name(self):
         """Test that create_submission_queue_record validates queue_name existence."""
-        student_item =  api._get_or_create_student_item(STUDENT_ITEM)
+        student_item = api._get_or_create_student_item(STUDENT_ITEM)  # pylint: disable=protected-access
         submission = Submission.objects.create(
             student_item=student_item,
             answer=ANSWER_ONE,
@@ -924,7 +924,7 @@ class TestSubmissionsApi(TestCase):
 
     def test_create_submission_queue_record_directly_database_error(self):
         """Test database error handling in create_submission_queue_record."""
-        student_item =  api._get_or_create_student_item(STUDENT_ITEM)
+        student_item = api._get_or_create_student_item(STUDENT_ITEM)  # pylint: disable=protected-access
         submission = Submission.objects.create(
             student_item=student_item,
             answer=ANSWER_ONE,
@@ -938,8 +938,6 @@ class TestSubmissionsApi(TestCase):
 
             with self.assertRaises(api.SubmissionInternalError):
                 api.create_submission_queue_record(submission, event_data)
-
-    """ Integration tests with create_submission """
 
     def test_create_submission_with_queue_record(self):
         """
@@ -958,14 +956,12 @@ class TestSubmissionsApi(TestCase):
         queue_record = SubmissionQueueRecord.objects.get(submission__uuid=submission_dict['uuid'])
         self.assertEqual(queue_record.queue_name, 'test_queue')
 
-
     def test_create_submission_missing_queue_name(self):
         """
         Test that creating a submission with event_data but without queue_name raises ValueError.
         """
         with self.assertRaises(SubmissionQueueCanNotBeEmptyError):
             api.create_submission(STUDENT_ITEM, ANSWER_ONE, queue_name="", files={})
-
 
     def test_create_multiple_submission_queue_records(self):
         """
@@ -991,7 +987,6 @@ class TestSubmissionsApi(TestCase):
         self.assertEqual(queue_record1.queue_name, 'shared_queue')
         self.assertEqual(queue_record2.queue_name, 'shared_queue')
         self.assertNotEqual(queue_record1.submission.uuid, queue_record2.submission.uuid)
-
 
     def test_create_submission_queue_record_database_error_integration(self):
         """

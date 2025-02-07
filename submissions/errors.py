@@ -30,6 +30,7 @@ class SubmissionNotFoundError(SubmissionError):
     Submissions, this error may be raised.
     """
 
+
 class SubmissionQueueCanNotBeEmptyError(SubmissionError):
     """
     This error is raised when queue name is empty.

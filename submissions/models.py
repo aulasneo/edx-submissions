@@ -627,7 +627,7 @@ class SubmissionQueueRecord(models.Model):
         choices=STATUS_CHOICES,
         default='pending'
     )
-    pullkey   = models.CharField(max_length=128, null=True, blank=True)
+    pullkey = models.CharField(max_length=128, null=True, blank=True)
     grader_reply = models.TextField(null=True, blank=True)
 
     status_time = models.DateTimeField(default=now, db_index=True)

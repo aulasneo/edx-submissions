@@ -17,15 +17,20 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('queue_name', models.CharField(max_length=128)),
-                ('status', models.CharField(choices=[('pending', 'Pending'), ('pulled', 'Pulled'), ('retired', 'Retired'), ('failed', 'Failed')], default='pending', max_length=20)),
+                ('status', models.CharField(choices=[('pending', 'Pending'), ('pulled', 'Pulled'),
+                                                     ('retired', 'Retired'), ('failed', 'Failed')],
+                                            default='pending', max_length=20)),
                 ('status_time', models.DateTimeField(db_index=True, default=django.utils.timezone.now)),
                 ('created_at', models.DateTimeField(db_index=True, default=django.utils.timezone.now)),
                 ('num_failures', models.PositiveIntegerField(default=0)),
-                ('submission', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='queue_record', to='submissions.submission')),
+                ('submission', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE,
+                                                    related_name='queue_record',
+                                                    to='submissions.submission')),
             ],
             options={
                 'ordering': ['-created_at'],
-                'indexes': [models.Index(fields=['queue_name', 'status', 'status_time'], name='submissions_queue_n_05eba7_idx')],
+                'indexes': [models.Index(fields=['queue_name', 'status', 'status_time'],
+                                         name='submissions_queue_n_05eba7_idx')],
             },
         ),
     ]
