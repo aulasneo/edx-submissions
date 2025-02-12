@@ -466,10 +466,11 @@ class TestSubmissionQueueRecord(TestCase):
             submission=self.submission,
             queue_name="test_queue"
         )
-        try:
-            new_record.clean()
-        except ValidationError:
-            self.fail("clean() raised ValidationError unexpectedly")
+        new_record.clean()
+        self.assertIsNone(new_record.pk, "New record should not have pk")
+        self.assertEqual(new_record.status, 'pending', "The intital state should be 'pending'")
+        self.assertIsNotNone(new_record.submission, "Submission must be defined")
+        self.assertEqual(new_record.queue_name, "test_queue")
 
     def test_get_queue_length_multiple_statuses(self):
         """Test that get_queue_length only counts pending submissions."""
