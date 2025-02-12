@@ -13,6 +13,7 @@ from django.contrib import auth
 from django.test import TestCase
 from django.utils.timezone import now
 from pytz import UTC
+from rest_framework.exceptions import ValidationError
 
 # Local imports
 from submissions.errors import TeamSubmissionInternalError, TeamSubmissionNotFoundError
@@ -414,6 +415,122 @@ class TestSubmissionQueueRecord(TestCase):
 
         self.queue_record.update_status('pulled')
         self.assertGreater(self.queue_record.status_time, original_time)
+
+    def test_valid_status_transitions(self):
+        """Test valid status transitions"""
+        # Test pending -> pulled
+        self.queue_record.update_status('pulled')
+        self.assertEqual(self.queue_record.status, 'pulled')
+
+        # Test pulled -> retired
+        self.queue_record.update_status('retired')
+        self.assertEqual(self.queue_record.status, 'retired')
+
+    def test_invalid_status_transitions(self):
+        """Test invalid status transitions raise error"""
+        # Can't go from pending to retired
+        with self.assertRaises(ValueError):
+            self.queue_record.update_status('retired')
+
+        # Set to pulled first
+        self.queue_record.update_status('pulled')
+
+        # Can't go from pulled to pending
+        with self.assertRaises(ValueError):
+            self.queue_record.update_status('pending')
+
+    def test_failure_count_increment(self):
+        """Test failure count increases properly"""
+        initial_failures = self.queue_record.num_failures
+
+        # Update to failed status
+        self.queue_record.update_status('failed')
+
+        # Check failure count increased
+        self.assertEqual(self.queue_record.num_failures, initial_failures + 1)
+
+    def test_clean_validation(self):
+        """Test clean method validation"""
+        # Set initial state
+        self.queue_record.status = 'pulled'
+        self.queue_record.save()
+
+        # Try invalid transition
+        self.queue_record.status = 'pending'
+        with self.assertRaises(ValidationError):
+            self.queue_record.clean()
+
+    def test_clean_new_instance(self):
+        """Test clean method for new instances (no pk assigned yet)"""
+        new_record = SubmissionQueueRecord(
+            submission=self.submission,
+            queue_name="test_queue"
+        )
+        try:
+            new_record.clean()
+        except ValidationError:
+            self.fail("clean() raised ValidationError unexpectedly")
+
+    def test_get_queue_length_multiple_statuses(self):
+        """Test that get_queue_length only counts pending submissions."""
+
+        # Create an old submission (outside processing window) that's pending
+        _ = SubmissionQueueRecord.objects.create(
+            submission=Submission.objects.create(
+                student_item=self.student_item,
+                answer="old pending",
+                attempt_number=2
+            ),
+            queue_name="test_queue",
+            status="pending",
+            status_time=now() - timedelta(minutes=90)
+        )
+
+        # Create an old submission that's pulled
+        _ = SubmissionQueueRecord.objects.create(
+            submission=Submission.objects.create(
+                student_item=self.student_item,
+                answer="old pulled",
+                attempt_number=3
+            ),
+            queue_name="test_queue",
+            status="pulled",
+            status_time=now() - timedelta(minutes=90)
+        )
+
+        # Should only count the pending submission
+        self.assertEqual(
+            SubmissionQueueRecord.objects.get_queue_length("test_queue"),
+            1
+        )
+
+    def test_filter_get_next_submission(self):
+        """
+        Test specific to filter with get_next_submission
+        """
+        new_student_item = StudentItem.objects.create(
+            student_id="test_student_2",
+            course_id="test_course",
+            item_id="test_item"
+        )
+        new_submission = Submission.objects.create(
+            student_item=new_student_item,
+            answer="test answer 2",
+            attempt_number=1
+        )
+
+        queue_record2 = SubmissionQueueRecord.objects.create(
+            submission=new_submission,
+            queue_name="test_queue_2",
+            status='pending',
+            status_time=now() - timedelta(minutes=61)
+        )
+
+        result = SubmissionQueueRecord.objects.get_next_submission("test_queue_2")
+
+        self.assertEqual(result, queue_record2)
+        result_wrong_queue = SubmissionQueueRecord.objects.get_next_submission("wrong_queue")
+        self.assertIsNone(result_wrong_queue)
 
 
 class TestSubmission(TestCase):
