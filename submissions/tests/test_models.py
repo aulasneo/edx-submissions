@@ -533,6 +533,81 @@ class TestSubmissionQueueRecord(TestCase):
         result_wrong_queue = SubmissionQueueRecord.objects.get_next_submission("wrong_queue")
         self.assertIsNone(result_wrong_queue)
 
+    def test_clean_invalid_transitions(self):
+        """Test that clean method properly validates all invalid status transitions"""
+        record = SubmissionQueueRecord.objects.get(pk=self.queue_record.pk)
+        record.status = 'retired'
+        with self.assertRaisesMessage(ValidationError, "Invalid status transition from pending to retired"):
+            record.clean()
+
+        record = SubmissionQueueRecord.objects.get(pk=self.queue_record.pk)
+        record.status = 'invalid_status'
+        with self.assertRaisesMessage(ValidationError, "Invalid status transition from pending to invalid_status"):
+            record.clean()
+
+        self.queue_record.update_status('pulled')
+        record = SubmissionQueueRecord.objects.get(pk=self.queue_record.pk)
+        record.status = 'pending'
+        with self.assertRaisesMessage(ValidationError, "Invalid status transition from pulled to pending"):
+            record.clean()
+
+        self.queue_record.update_status('failed')
+        record = SubmissionQueueRecord.objects.get(pk=self.queue_record.pk)
+        record.status = 'retired'
+        with self.assertRaisesMessage(ValidationError, "Invalid status transition from failed to retired"):
+            record.clean()
+
+    def test_clean_valid_transitions(self):
+        """Test that clean method allows all valid status transitions"""
+
+        # Test 1: pending -> pulled
+        record = SubmissionQueueRecord.objects.get(pk=self.queue_record.pk)
+        self.assertEqual(record.status, 'pending', "Initial status should be 'pending'")
+        record.status = 'pulled'
+        record.clean()
+        record.save()
+        self.assertEqual(record.status, 'pulled', "Status should transition from 'pending' to 'pulled'")
+
+        # Test 2: pulled -> failed
+        self.assertEqual(record.status, 'pulled', "Status should be 'pulled' before transition")
+        record.status = 'failed'
+        record.clean()
+        record.save()
+        self.assertEqual(record.status, 'failed', "Status should transition from 'pulled' to 'failed'")
+
+        # Test 3: failed -> pending
+        self.assertEqual(record.status, 'failed', "Status should be 'failed' before transition")
+        record.status = 'pending'
+        record.clean()
+        record.save()
+        self.assertEqual(record.status, 'pending', "Status should transition from 'failed' to 'pending'")
+
+        # Test 4: pending -> failed (otra rama)
+        self.assertEqual(record.status, 'pending', "Status should be 'pending' before transition")
+        record.status = 'failed'
+        record.clean()
+        record.save()
+        self.assertEqual(record.status, 'failed', "Status should transition from 'pending' to 'failed'")
+
+        # Test 5: pending -> pulled -> retired
+        self.assertEqual(record.status, 'failed', "Status should be 'failed' before transition")
+        record.status = 'pending'
+        record.clean()
+        record.save()
+        self.assertEqual(record.status, 'pending', "Status should transition back to 'pending'")
+
+        record.status = 'pulled'
+        record.clean()
+        record.save()
+        self.assertEqual(record.status, 'pulled', "Status should transition from 'pending' to 'pulled'")
+
+        record = SubmissionQueueRecord.objects.get(pk=self.queue_record.pk)
+        self.assertEqual(record.status, 'pulled', "Status should be 'pulled' before transition")
+        record.status = 'retired'
+        record.clean()
+        record.save()
+        self.assertEqual(record.status, 'retired', "Status should transition from 'pulled' to 'retired'")
+
 
 class TestSubmission(TestCase):
     """
