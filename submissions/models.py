@@ -651,7 +651,7 @@ class SubmissionQueueRecord(models.Model):
             return
 
         old_instance = SubmissionQueueRecord.objects.get(pk=self.pk)
-        if not self.can_transition_to(self.status):
+        if not self.can_transition_to(self.status, old_instance.status):
             raise ValidationError(
                 f"Invalid status transition from {old_instance.status} to {self.status}"
             )
@@ -670,9 +670,10 @@ class SubmissionQueueRecord(models.Model):
         )
         return self.status_time <= processing_window
 
-    def can_transition_to(self, new_status):
+    def can_transition_to(self, new_status, current_status=None):
         """Check if the transition to new_status is valid."""
-        return new_status in self.VALID_TRANSITIONS.get(self.status, [])
+        from_status = current_status if current_status is not None else self.status
+        return new_status in self.VALID_TRANSITIONS.get(from_status, [])
 
     @transaction.atomic
     def update_status(self, new_status):
