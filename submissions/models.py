@@ -9,23 +9,27 @@ need to then generate a matching migration for it using:
     ./manage.py makemigrations submissions
 """
 
+# Stdlib imports
 import logging
 import os
 from datetime import timedelta
 from uuid import uuid4
 
+# Django imports
 from django.conf import settings
 from django.contrib import auth
+from django.core.files.base import ContentFile
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import DatabaseError, models, transaction
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import Signal, receiver
 from django.utils.timezone import now
-from django.core.files.base import ContentFile
-
+# Third party imports
 from jsonfield import JSONField
 from model_utils.models import TimeStampedModel
 from rest_framework.exceptions import ValidationError
 
+# Local imports
 from submissions.errors import DuplicateTeamSubmissionsError, TeamSubmissionInternalError, TeamSubmissionNotFoundError
 
 logger = logging.getLogger(__name__)
@@ -696,7 +700,6 @@ class SubmissionQueueRecord(models.Model):
             self.save(update_fields=['status', 'status_time'])
 
 
-
 def submission_file_path(instance, filename):
     """
     Generate file path for submission files.
@@ -713,7 +716,7 @@ class SubmissionFile(models.Model):
     """
     Model to handle files associated with submissions
     """
-    uid = models.UUIDField(default=uuid4, editable=False) # legacy S3 key
+    uid = models.UUIDField(default=uuid4, editable=False)  # legacy S3 key
     submission_queue = models.ForeignKey(
         'submissions.SubmissionQueueRecord',
         on_delete=models.SET_NULL,
@@ -756,24 +759,32 @@ class SubmissionFileManager:
         files_urls = {}
 
         for filename, file_obj in files_dict.items():
-            if isinstance(file_obj, bytes):
-                file_obj = ContentFile(file_obj, name=filename)
+            if not (isinstance(file_obj, (bytes, ContentFile, SimpleUploadedFile)) or hasattr(file_obj, 'read')):
+                logger.warning(f"Invalid file object type for {filename}")
+                continue
 
             if hasattr(file_obj, 'read'):
                 try:
                     file_content = file_obj.read()
                     if isinstance(file_content, bytes):
                         file_obj = ContentFile(file_content, name=filename)
-                except Exception as e:
-                    print(f"Error reading file {filename}: {e}")
+                    else:
+                        continue
+                except (IOError, OSError) as e:
+                    logger.error(f"Error reading file {filename}: {e}")
                     continue
+                except UnicodeDecodeError as e:
+                    logger.error(f"Error decoding file {filename}: {e}")
+                    continue
+
+            if isinstance(file_obj, bytes):
+                file_obj = ContentFile(file_obj, name=filename)
 
             submission_file = SubmissionFile.objects.create(
                 submission_queue=self.submission_queue,
                 file=file_obj,
                 original_filename=filename
             )
-
             files_urls[filename] = submission_file.xqueue_url
 
         return files_urls
