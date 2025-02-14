@@ -999,10 +999,9 @@ class TestSubmissionsApi(TestCase):
             with self.assertRaises(api.SubmissionInternalError):
                 api.create_submission(STUDENT_ITEM, ANSWER_ONE, queue_name="test_queue", files={})
 
-
     def test_create_submission_queue_record_with_files(self):
         """Test creating a queue record with file handling."""
-        student_item = api._get_or_create_student_item(STUDENT_ITEM)
+        student_item = api._get_or_create_student_item(STUDENT_ITEM)  # pylint: disable=protected-access
         submission = Submission.objects.create(
             student_item=student_item,
             answer=ANSWER_ONE,
@@ -1029,10 +1028,9 @@ class TestSubmissionsApi(TestCase):
         submission_file = queue_record.files.first()
         self.assertEqual(submission_file.original_filename, 'test.txt')
 
-
     def test_create_submission_queue_record_with_multiple_files(self):
         """Test creating a queue record with multiple files."""
-        student_item = api._get_or_create_student_item(STUDENT_ITEM)
+        student_item = api._get_or_create_student_item(STUDENT_ITEM)  # pylint: disable=protected-access
         submission = Submission.objects.create(
             student_item=student_item,
             answer=ANSWER_ONE,
@@ -1063,10 +1061,9 @@ class TestSubmissionsApi(TestCase):
         filenames = set(queue_record.files.values_list('original_filename', flat=True))
         self.assertEqual(filenames, {'test1.txt', 'test2.txt'})
 
-
     def test_create_submission_queue_record_without_files(self):
         """Test creating a queue record without any files still works."""
-        student_item = api._get_or_create_student_item(STUDENT_ITEM)
+        student_item = api._get_or_create_student_item(STUDENT_ITEM)  # pylint: disable=protected-access
         submission = Submission.objects.create(
             student_item=student_item,
             answer=ANSWER_ONE,
