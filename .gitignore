@@ -63,3 +63,6 @@ test.txt.tmp
 
 # VSCode
 .vscode
+
+# Test submission files
+test_queue/
