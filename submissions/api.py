@@ -1,7 +1,5 @@
-"""
-Public interface for the submissions app.
+"""Public interface for the submissions app."""
 
-"""
 # Stdlib imports
 import itertools
 import logging
@@ -15,7 +13,6 @@ from django.core.cache import cache
 from django.db import DatabaseError, IntegrityError, transaction
 
 # Local imports
-# SubmissionError imported so that code importing this api has access
 from submissions.errors import (  # pylint: disable=unused-import
     SubmissionError,
     SubmissionInternalError,
@@ -30,11 +27,10 @@ from submissions.models import (
     ScoreSummary,
     StudentItem,
     Submission,
+    SubmissionFileManager,
     SubmissionQueueRecord,
     score_reset,
-    score_set,
-    SubmissionQueueRecord,
-    SubmissionFileManager
+    score_set
 )
 from submissions.serializers import (
     ScoreSerializer,

@@ -1,6 +1,5 @@
-"""
-Tests for submission models.
-"""
+"""Tests for submission models."""
+
 # Stdlib imports
 import time
 from datetime import datetime, timedelta
@@ -25,9 +24,9 @@ from submissions.models import (
     ScoreSummary,
     StudentItem,
     Submission,
-    TeamSubmission,
+    SubmissionFile,
     SubmissionQueueRecord,
-    SubmissionFile
+    TeamSubmission
 )
 
 User = auth.get_user_model()
@@ -680,7 +679,6 @@ class TestSubmission(TestCase):
         submission_to_delete.status = DELETED
         submission_to_delete.save()
         self.assertNotIn(submission_to_delete, Submission.objects.all())
-
 
     def test_answer_json_serialization(self):
         """Test that the answer field properly handles JSON serialization."""

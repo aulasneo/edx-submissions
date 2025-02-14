@@ -22,7 +22,8 @@ class Migration(migrations.Migration):
                 ('file', models.FileField(max_length=512, upload_to=submissions.models.submission_file_path)),
                 ('original_filename', models.CharField(max_length=255)),
                 ('created_at', models.DateTimeField(default=django.utils.timezone.now)),
-                ('submission_queue', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='files', to='submissions.submissionqueuerecord')),
+                ('submission_queue', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL,
+                                                       related_name='files', to='submissions.submissionqueuerecord')),
             ],
             options={
                 'indexes': [models.Index(fields=['submission_queue', 'uid'], name='submissions_submiss_b1d4b0_idx')],
