@@ -10,7 +10,7 @@ import uuid
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('submissions', '0007_submissionqueuerecord_grader_file_name_and_more'),
+        ('submissions', '0008_rename_submissionqueuerecord_externalgraderdetail_and_more'),
     ]
 
     operations = [
@@ -23,7 +23,7 @@ class Migration(migrations.Migration):
                 ('original_filename', models.CharField(max_length=255)),
                 ('created_at', models.DateTimeField(default=django.utils.timezone.now)),
                 ('submission_queue', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL,
-                                                       related_name='files', to='submissions.submissionqueuerecord')),
+                                                       related_name='files', to='submissions.externalgraderdetail')),
             ],
             options={
                 'indexes': [models.Index(fields=['submission_queue', 'uid'], name='submissions_submiss_b1d4b0_idx')],

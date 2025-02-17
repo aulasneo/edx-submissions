@@ -5,7 +5,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 
 # Local imports
-from submissions.models import StudentItem, Submission, SubmissionFile, SubmissionFileManager, SubmissionQueueRecord
+from submissions.models import ExternalGraderDetail, StudentItem, Submission, SubmissionFile, SubmissionFileManager
 
 
 class TestSubmissionFileManager(TestCase):
@@ -25,7 +25,7 @@ class TestSubmissionFileManager(TestCase):
             answer="test answer",
             attempt_number=1
         )
-        self.queue_record = SubmissionQueueRecord.objects.create(
+        self.queue_record = ExternalGraderDetail.objects.create(
             submission=self.submission,
             queue_name="test_queue"
         )

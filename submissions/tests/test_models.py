@@ -27,7 +27,6 @@ from submissions.models import (
     StudentItem,
     Submission,
     SubmissionFile,
-    SubmissionQueueRecord,
     TeamSubmission
 )
 
@@ -762,7 +761,7 @@ class TestSubmissionFile(TestCase):
             answer="test answer",
             attempt_number=1
         )
-        self.queue_record = SubmissionQueueRecord.objects.create(
+        self.queue_record = ExternalGraderDetail.objects.create(
             submission=self.submission,
             queue_name="test_queue"
         )

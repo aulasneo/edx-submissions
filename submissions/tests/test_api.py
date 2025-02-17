@@ -19,8 +19,6 @@ from freezegun import freeze_time
 # Local imports
 from submissions import api
 from submissions.errors import SubmissionInternalError, SubmissionQueueCanNotBeEmptyError
-from submissions.models import ScoreAnnotation, ScoreSummary, StudentItem, Submission, SubmissionQueueRecord, score_set
-from submissions.errors import SubmissionInternalError, SubmissionQueueCanNotBeEmptyError
 from submissions.models import ExternalGraderDetail, ScoreAnnotation, ScoreSummary, StudentItem, Submission, score_set
 from submissions.serializers import StudentItemSerializer
 
