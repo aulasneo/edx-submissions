@@ -25,12 +25,12 @@ from submissions.errors import (  # pylint: disable=unused-import
 )
 from submissions.models import (
     DELETED,
+    ExternalGraderDetail,
     Score,
     ScoreAnnotation,
     ScoreSummary,
     StudentItem,
     Submission,
-    SubmissionQueueRecord,
     score_reset,
     score_set
 )
@@ -54,14 +54,14 @@ TOP_SUBMISSIONS_CACHE_TIMEOUT = 300
 
 def create_submission_queue_record(submission, event_data):
     """
-    Creates a SubmissionQueueRecord for a given submission.
+    Creates a ExternalGraderDetail for a given submission.
 
     Args:
         submission (Submission): The submission object to create a queue record for.
         event_data (dict): Data to be included in the queue record. Must include a 'queue_name' key.
 
     Returns:
-        SubmissionQueueRecord: The created queue record.
+        ExternalGraderDetail: The created queue record.
 
     Raises:
         SubmissionQueueCanNotBeEmptyError: If event_data doesn't contain required queue_name.
@@ -72,7 +72,7 @@ def create_submission_queue_record(submission, event_data):
         raise SubmissionQueueCanNotBeEmptyError("event_data must contain 'queue_name'")
 
     try:
-        queue_record = SubmissionQueueRecord.objects.create(
+        queue_record = ExternalGraderDetail.objects.create(
             submission=submission,
             queue_name=event_data['queue_name'],
             grader_file_name=event_data.get('grader_file_name', ''),
@@ -122,7 +122,7 @@ def create_submission(
         team_submission (TeamSubmission, optional): The team submission this individual
             submission is associated with, if any.
 
-        event_data (dict, optional): If provided, creates a SubmissionQueueRecord
+        event_data (dict, optional): If provided, creates a ExternalGraderDetail
             for this submission. Must contain at least a ``queue_name`` key.
 
     Returns:

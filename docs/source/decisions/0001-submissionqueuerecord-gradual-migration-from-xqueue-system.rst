@@ -1,4 +1,4 @@
-1. Creation of SubmissionQueueRecord Model for XQueue Migration
+1. Creation of ExternalGraderDetail Model for XQueue Migration
 ###############################################################
 
 Status
@@ -64,7 +64,7 @@ This architecture has limitations:
 Decision
 ********
 
-As part of Phase 1 of the XQueue migration plan, we will create a new SubmissionQueueRecord model in edx-submissions as follows:
+As part of Phase 1 of the XQueue migration plan, we will create a new ExternalGraderDetail model in edx-submissions as follows:
 
 Model Structure and Technical Details
 -------------------------------------

@@ -18,7 +18,7 @@ from freezegun import freeze_time
 # Local imports
 from submissions import api
 from submissions.errors import SubmissionInternalError, SubmissionQueueCanNotBeEmptyError
-from submissions.models import ScoreAnnotation, ScoreSummary, StudentItem, Submission, SubmissionQueueRecord, score_set
+from submissions.models import ExternalGraderDetail, ScoreAnnotation, ScoreSummary, StudentItem, Submission, score_set
 from submissions.serializers import StudentItemSerializer
 
 STUDENT_ITEM = {
@@ -933,7 +933,7 @@ class TestSubmissionsApi(TestCase):
 
         event_data = {'queue_name': 'test_queue'}
 
-        with mock.patch.object(SubmissionQueueRecord.objects, 'create') as mock_create:
+        with mock.patch.object(ExternalGraderDetail.objects, 'create') as mock_create:
             mock_create.side_effect = DatabaseError("Database connection failed")
 
             with self.assertRaises(api.SubmissionInternalError):
@@ -953,7 +953,7 @@ class TestSubmissionsApi(TestCase):
         student_item = self._get_student_item(STUDENT_ITEM)
         self._assert_submission(submission_dict, ANSWER_ONE, student_item.pk, 1)
 
-        queue_record = SubmissionQueueRecord.objects.get(submission__uuid=submission_dict['uuid'])
+        queue_record = ExternalGraderDetail.objects.get(submission__uuid=submission_dict['uuid'])
         self.assertEqual(queue_record.queue_name, 'test_queue')
 
     def test_create_submission_missing_queue_name(self):
@@ -992,7 +992,7 @@ class TestSubmissionsApi(TestCase):
         """
         Test database error handling when creating a queue record through create_submission.
         """
-        with mock.patch.object(SubmissionQueueRecord.objects, 'create') as mock_create:
+        with mock.patch.object(ExternalGraderDetail.objects, 'create') as mock_create:
             mock_create.side_effect = DatabaseError("Database connection failed")
 
             with self.assertRaises(api.SubmissionInternalError):

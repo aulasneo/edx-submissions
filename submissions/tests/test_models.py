@@ -20,11 +20,11 @@ from submissions.errors import TeamSubmissionInternalError, TeamSubmissionNotFou
 from submissions.models import (
     DELETED,
     DuplicateTeamSubmissionsError,
+    ExternalGraderDetail,
     Score,
     ScoreSummary,
     StudentItem,
     Submission,
-    SubmissionQueueRecord,
     TeamSubmission
 )
 
@@ -304,9 +304,9 @@ class TestTeamSubmission(TestCase):
             )
 
 
-class TestSubmissionQueueRecord(TestCase):
+class TestExternalGraderDetail(TestCase):
     """
-    Test the SubmissionQueueRecord model functionality.
+    Test the ExternalGraderDetail model functionality.
     """
 
     def setUp(self):
@@ -321,7 +321,7 @@ class TestSubmissionQueueRecord(TestCase):
             answer="test answer",
             attempt_number=1
         )
-        self.queue_record = SubmissionQueueRecord.objects.create(
+        self.queue_record = ExternalGraderDetail.objects.create(
             submission=self.submission,
             queue_name="test_queue"
         )
@@ -401,7 +401,7 @@ class TestSubmissionQueueRecord(TestCase):
 
         # Test that we can't create another queue record for the same submission
         with self.assertRaises(Exception):  # Could be IntegrityError or ValidationError
-            SubmissionQueueRecord.objects.create(
+            ExternalGraderDetail.objects.create(
                 submission=self.submission,
                 queue_name="another_queue"
             )
@@ -462,7 +462,7 @@ class TestSubmissionQueueRecord(TestCase):
 
     def test_clean_new_instance(self):
         """Test clean method for new instances (no pk assigned yet)"""
-        new_record = SubmissionQueueRecord(
+        new_record = ExternalGraderDetail(
             submission=self.submission,
             queue_name="test_queue"
         )
@@ -476,7 +476,7 @@ class TestSubmissionQueueRecord(TestCase):
         """Test that get_queue_length only counts pending submissions."""
 
         # Create an old submission (outside processing window) that's pending
-        _ = SubmissionQueueRecord.objects.create(
+        _ = ExternalGraderDetail.objects.create(
             submission=Submission.objects.create(
                 student_item=self.student_item,
                 answer="old pending",
@@ -488,7 +488,7 @@ class TestSubmissionQueueRecord(TestCase):
         )
 
         # Create an old submission that's pulled
-        _ = SubmissionQueueRecord.objects.create(
+        _ = ExternalGraderDetail.objects.create(
             submission=Submission.objects.create(
                 student_item=self.student_item,
                 answer="old pulled",
@@ -501,7 +501,7 @@ class TestSubmissionQueueRecord(TestCase):
 
         # Should only count the pending submission
         self.assertEqual(
-            SubmissionQueueRecord.objects.get_queue_length("test_queue"),
+            ExternalGraderDetail.objects.get_queue_length("test_queue"),
             1
         )
 
@@ -520,39 +520,39 @@ class TestSubmissionQueueRecord(TestCase):
             attempt_number=1
         )
 
-        queue_record2 = SubmissionQueueRecord.objects.create(
+        queue_record2 = ExternalGraderDetail.objects.create(
             submission=new_submission,
             queue_name="test_queue_2",
             status='pending',
             status_time=now() - timedelta(minutes=61)
         )
 
-        result = SubmissionQueueRecord.objects.get_next_submission("test_queue_2")
+        result = ExternalGraderDetail.objects.get_next_submission("test_queue_2")
 
         self.assertEqual(result, queue_record2)
-        result_wrong_queue = SubmissionQueueRecord.objects.get_next_submission("wrong_queue")
+        result_wrong_queue = ExternalGraderDetail.objects.get_next_submission("wrong_queue")
         self.assertIsNone(result_wrong_queue)
 
     def test_clean_invalid_transitions(self):
         """Test that clean method properly validates all invalid status transitions"""
-        record = SubmissionQueueRecord.objects.get(pk=self.queue_record.pk)
+        record = ExternalGraderDetail.objects.get(pk=self.queue_record.pk)
         record.status = 'retired'
         with self.assertRaisesMessage(ValidationError, "Invalid status transition from pending to retired"):
             record.clean()
 
-        record = SubmissionQueueRecord.objects.get(pk=self.queue_record.pk)
+        record = ExternalGraderDetail.objects.get(pk=self.queue_record.pk)
         record.status = 'invalid_status'
         with self.assertRaisesMessage(ValidationError, "Invalid status transition from pending to invalid_status"):
             record.clean()
 
         self.queue_record.update_status('pulled')
-        record = SubmissionQueueRecord.objects.get(pk=self.queue_record.pk)
+        record = ExternalGraderDetail.objects.get(pk=self.queue_record.pk)
         record.status = 'pending'
         with self.assertRaisesMessage(ValidationError, "Invalid status transition from pulled to pending"):
             record.clean()
 
         self.queue_record.update_status('failed')
-        record = SubmissionQueueRecord.objects.get(pk=self.queue_record.pk)
+        record = ExternalGraderDetail.objects.get(pk=self.queue_record.pk)
         record.status = 'retired'
         with self.assertRaisesMessage(ValidationError, "Invalid status transition from failed to retired"):
             record.clean()
@@ -561,7 +561,7 @@ class TestSubmissionQueueRecord(TestCase):
         """Test that clean method allows all valid status transitions"""
 
         # Test 1: pending -> pulled
-        record = SubmissionQueueRecord.objects.get(pk=self.queue_record.pk)
+        record = ExternalGraderDetail.objects.get(pk=self.queue_record.pk)
         self.assertEqual(record.status, 'pending', "Initial status should be 'pending'")
         record.status = 'pulled'
         record.clean()
@@ -601,7 +601,7 @@ class TestSubmissionQueueRecord(TestCase):
         record.save()
         self.assertEqual(record.status, 'pulled', "Status should transition from 'pending' to 'pulled'")
 
-        record = SubmissionQueueRecord.objects.get(pk=self.queue_record.pk)
+        record = ExternalGraderDetail.objects.get(pk=self.queue_record.pk)
         self.assertEqual(record.status, 'pulled', "Status should be 'pulled' before transition")
         record.status = 'retired'
         record.clean()
