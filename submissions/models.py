@@ -601,7 +601,7 @@ class SubmissionQueueManager(models.Manager):
         return self.filter(status_time__lte=processing_window)
 
 
-class SubmissionQueueRecord(models.Model):
+class ExternalGraderDetail(models.Model):
     """
     Tracks queue processing information for a Submission.
     """
@@ -657,7 +657,7 @@ class SubmissionQueueRecord(models.Model):
         if not self.pk:  # New instance
             return
 
-        old_instance = SubmissionQueueRecord.objects.get(pk=self.pk)
+        old_instance = ExternalGraderDetail.objects.get(pk=self.pk)
         if not self.can_transition_to(self.status, old_instance.status):
             raise ValidationError(
                 f"Invalid status transition from {old_instance.status} to {self.status}"
@@ -718,7 +718,7 @@ class SubmissionFile(models.Model):
     """
     uid = models.UUIDField(default=uuid4, editable=False)  # legacy S3 key
     submission_queue = models.ForeignKey(
-        'submissions.SubmissionQueueRecord',
+        'submissions.ExternalGraderDetail',
         on_delete=models.SET_NULL,
         related_name='files',
         null=True,
