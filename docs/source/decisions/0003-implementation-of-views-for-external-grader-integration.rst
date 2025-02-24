@@ -51,56 +51,36 @@ and session management. The existing workflow:
 Decision
 ********
 
-We will implement a ViewSet that consolidates these services while leveraging the new ExternalGraderDetail and
-SubmissionFile models:
+We will implement a unified service approach that brings together all the functionality needed for external grader integration. This approach will:
 
-1. Authentication Layer:
-   - Custom SessionAuthentication class for CSRF exemptions
-   - Robust session management with explicit cookie handling
-   - Secure login/logout endpoints
+1. Simplify Authentication:
+   - Create a more straightforward login process for external graders
+   - Make session handling more reliable
+   - Ensure security while reducing technical complexity
 
-2. Submission Distribution:
-   - Atomic queue-based submission retrieval
-   - Integrated file handling through SubmissionFileManager
-   - Status tracking with explicit state transitions
-   - UUID-based submission keys for security
+2. Improve Submission Handling:
+   - Create a more efficient way to distribute submissions to graders
+   - Track the status of submissions more reliably
+   - Provide all necessary information to graders in a consistent format
 
-3. Result Processing:
-   - Transactional score updates
-   - Integrated retry mechanism
-   - Comprehensive error handling
-   - Atomic status updates
+3. Enhance Results Processing:
+   - Process scores more reliably
+   - Handle errors gracefully
+   - Provide better feedback to both graders and the platform
 
-Key Implementation Details:
+The solution will be built as a consolidated service that external graders can interact with through standard REST API endpoints. This will make integration easier for external services while providing better monitoring and control for the platform.
 
-1. Session Management:
-   ```python
-   class XQueueSessionAuthentication(SessionAuthentication):
-       def enforce_csrf(self, request):
-           if 'put_result' in request.path:
-               return None
-           return super().enforce_csrf(request)
-   ```
+Key Benefits:
 
-2. Submission Retrieval:
-   ```python
-   @transaction.atomic
-   def get_submission(self, request):
-       submission_record = ExternalGraderDetail.objects.filter(
-           queue_name=queue_name,
-           status__in=['pending']
-       ).select_related('submission').first()
-   ```
+1. External graders will have a single, consistent interface
+2. The platform will have better visibility into the grading process
+3. Error handling will be improved across the entire workflow
+4. Security will be enhanced through better authentication practices
 
-3. Score Processing:
-   ```python
-   set_score(str(submission_record.submission.uuid),
-             points_earned,
-             max_points)
-   ```
+This approach connects directly with the previously created data models for external graders and submission files, providing a complete end-to-end solution for the grading workflow.
 
 Consequences
-***********
+************
 
 Positive:
 ---------
@@ -142,18 +122,22 @@ References
 **********
 
 Implementation References:
-   * XQueue ViewSet Implementation: Link to PR
-   * External Grader Integration Guide: Link to documentation
+
+* XQueue ViewSet Implementation: Link to PR
+* External Grader Integration Guide: Link to documentation
 
 Related ADRs:
-   * ADR 1: Creation of ExternalGraderDetail Model
-   * ADR 2: File Handling Implementation
+
+* ADR 1: Creation of ExternalGraderDetail Model
+* ADR 2: File Handling Implementation
 
 Documentation:
-   * XQueue API Specification
-   * External Grader Integration Guide
-   * Session Management Documentation
+
+* XQueue API Specification
+* External Grader Integration Guide
+* Session Management Documentation
 
 Architecture Guidelines:
-   * Django REST Framework Best Practices
-   * Open edX API Guidelines
+
+* Django REST Framework Best Practices
+* Open edX API Guidelines
