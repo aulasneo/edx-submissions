@@ -2,11 +2,9 @@
 
 import json
 import logging
-import re
 import uuid
 
-from django.contrib.auth import authenticate, get_user_model, login, logout
-from django.contrib.sessions.backends.cache import SessionStore
+from django.contrib.auth import authenticate, login, logout
 from django.db import transaction
 from django.http import HttpResponse
 from django.utils import timezone
@@ -208,7 +206,8 @@ class XqueueViewSet(viewsets.ViewSet):
             )
 
         try:
-            submission_record = ExternalGraderDetail.objects.select_for_update().get(submission__id=submission_id)
+            submission_record = ExternalGraderDetail.objects.select_for_update(
+                                                                        nowait=True).get(submission__id=submission_id)
         except ExternalGraderDetail.DoesNotExist:
             log.error(
                 "Grader submission_id refers to nonexistent entry in Submission DB: "
