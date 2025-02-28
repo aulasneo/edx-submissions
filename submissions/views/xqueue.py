@@ -62,94 +62,6 @@ class XqueueViewSet(viewsets.ViewSet):
             permission_classes = [IsAuthenticated]
         return [permission() for permission in permission_classes]
 
-    @staticmethod
-    def parse_cookies(request):
-        """Method to parse string cookie"""
-        cookie_header = request.headers.get('Cookie', '')
-        cookies = {}
-        if cookie_header:
-            for cookie in cookie_header.split(';'):
-                if '=' in cookie:
-                    name, value = cookie.strip().split('=', 1)
-                    cookies[name] = value
-
-        return cookies
-
-    def dispatch(self, request, *args, **kwargs):
-        """
-        Ensures the request has a valid session before processing it by handling session validation,
-        cookie parsing, and user authentication.
-
-        This method extends the base dispatch functionality to provide session management and
-        user authentication by:
-            1. Extracting and parsing cookies from the request headers
-            2. Retrieving the session ID from either 'sessionid' or 'lms_sessionid' cookies
-            3. Loading the session using Django's SessionStore
-            4. Authenticating and loading the user if session contains auth data
-
-        Args:
-            request (HttpRequest): The incoming HTTP request object
-            *args: Variable length argument list passed to parent dispatch
-            **kwargs: Arbitrary keyword arguments passed to parent dispatch
-
-        Returns:
-            HttpResponse: The response from the parent dispatch method
-
-        Side Effects:
-            - Sets request.session if a valid session is found
-            - Sets request.user if authentication data is present in session
-
-        Raises:
-            No explicit exceptions are raised, but logs any errors during session loading
-
-        Example:
-            This method is typically not called directly but is part of the request
-            processing pipeline:
-
-            ```
-            class MyView(View):
-                def dispatch(self, request, *args, **kwargs):
-                    # This will ensure session validation before processing
-                    return super().dispatch(request, *args, **kwargs)
-            ```
-
-        Note:
-            - Uses PickleSerializer for session deserialization
-            - Logs various debug information about headers, cookies, and session loading
-            - Falls back to parent dispatch even if session loading fails
-        """
-
-        log.info("Dispatching request")
-
-        if hasattr(request, 'session'):
-            cookies = self.parse_cookies(request)
-            session_key = cookies.get('sessionid') or cookies.get('lms_sessionid')
-            if session_key:
-                if not re.match(r'^[a-zA-Z0-9]{32,}$', session_key):
-                    log.warning("Invalid session key format")
-                    return super().dispatch(request, *args, **kwargs)
-
-                if request.session.get_expiry_age() <= 0:
-                    log.warning("Expired session")
-                    return super().dispatch(request, *args, **kwargs)
-
-                if request.session.exists(session_key=session_key):
-                    new_session = SessionStore(session_key=session_key)
-                    new_session.load()
-
-                    if '_auth_user_id' in new_session:
-                        request.session = new_session
-                        User = get_user_model()
-                        try:
-                            request.user = User.objects.get(
-                                pk=request.session['_auth_user_id']
-                            )
-                        except User.DoesNotExist:
-                            log.warning("User not found for session")
-                            return super().dispatch(request, *args, **kwargs)
-
-        return super().dispatch(request, *args, **kwargs)
-
     @action(detail=False, methods=['post'], url_name='login')
     def login(self, request):
         """
@@ -175,8 +87,7 @@ class XqueueViewSet(viewsets.ViewSet):
                 {'return_code': 0, 'content': 'Logged in'},
                 status=status.HTTP_200_OK
             )
-            log.info(f"Response headers: {response.headers}")
-            response["Set-Cookie"] = f"sessionid={request.session.session_key}; HttpOnly; Path=/"
+
             return response
 
         return Response(
