@@ -78,6 +78,7 @@ def create_external_grader_detail(submission, event_data):
             queue_name=event_data['queue_name'],
             grader_file_name=event_data.get('grader_file_name', ''),
             points_possible=event_data.get('points_possible', 1),
+            queue_key=event_data.get('queue_key', ''),
         )
 
         files_dict = event_data.get('files')
