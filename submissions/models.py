@@ -15,7 +15,6 @@ import os
 from datetime import timedelta
 from uuid import uuid4
 
-# Django imports
 from django.conf import settings
 from django.contrib import auth
 from django.core.files.base import ContentFile
@@ -700,16 +699,21 @@ class ExternalGraderDetail(models.Model):
         else:
             self.save(update_fields=['status', 'status_time'])
 
+    @classmethod
+    def create_from_uuid(cls, submission_uuid, **kwargs):
+        submission = Submission.objects.get(uuid=submission_uuid)
+        return cls.objects.create(submission=submission, **kwargs)
 
-def submission_file_path(instance, filename):
+
+def submission_file_path(instance, _):
     """
     Generate file path for submission files.
-    Format: queue_name/uuid/original_filename
+    Format: queue_name/uuid
+    The filename is replaced with the UUID to ensure uniqueness without preserving extension.
     """
     return os.path.join(
         instance.submission_queue.queue_name,
-        str(instance.uid),
-        filename
+        f"{instance.uid}"
     )
 
 
@@ -717,7 +721,8 @@ class SubmissionFile(models.Model):
     """
     Model to handle files associated with submissions
     """
-    uid = models.UUIDField(default=uuid4, editable=False)  # legacy S3 key
+    uid = models.UUIDField(default=uuid4, editable=False)
+    # legacy S3 key
     submission_queue = models.ForeignKey(
         'submissions.ExternalGraderDetail',
         on_delete=models.SET_NULL,
@@ -728,7 +733,7 @@ class SubmissionFile(models.Model):
         upload_to=submission_file_path,
         max_length=512
     )
-    original_filename = models.CharField(max_length=255)
+    original_filename = models.CharField(max_length=255)  # This is necessary to send file name to xqueue-watcher
     created_at = models.DateTimeField(default=now)
 
     class Meta:
@@ -758,7 +763,6 @@ class SubmissionFileManager:
         Returns URLs in xqueue compatible format.
         """
         files_urls = {}
-
         for filename, file_obj in files_dict.items():
             if not (isinstance(file_obj, (bytes, ContentFile, SimpleUploadedFile)) or hasattr(file_obj, 'read')):
                 logger.warning(f"Invalid file object type for {filename}")

@@ -29,7 +29,7 @@ edx-submissions, requiring:
 
 3. Integration Points:
    - Connection with SubmissionQueueRecord
-   - Support for existing XWatcher interface
+   - Support for existing xqueue-watcher interface
    - File URL format compatibility
    - Efficient database querying
 
@@ -55,7 +55,7 @@ retrieval in a tightly coupled way. The existing implementation:
    - Limited by CharField size for storing file information
    - Requires complex get_submission logic for file retrieval
 
-4. XWatcher Integration:
+4. Xqueue-watcher Integration:
    - External graders rely on specific URL formats
    - File access depends on HTTP-based retrieval
    - File information is embedded in submission payload
@@ -99,7 +99,7 @@ Positive:
    - Efficient database querying through proper indexing
 
 2. Integration:
-   - Seamless XWatcher compatibility
+   - Seamless xqueue-watcher compatibility
    - Support for existing file processing workflows
    - Minimal changes required to client code
 

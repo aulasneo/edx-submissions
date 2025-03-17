@@ -2,7 +2,6 @@
 Public interface for the submissions app.
 
 """
-# Stdlib imports
 import itertools
 import logging
 import operator
@@ -17,7 +16,7 @@ from django.db import DatabaseError, IntegrityError, transaction
 # Local imports
 # SubmissionError imported so that code importing this api has access
 from submissions.errors import (  # pylint: disable=unused-import
-    ExternalGraderQueueCanNotBeEmptyError,
+    ExternalGraderQueueEmptyError,
     SubmissionError,
     SubmissionInternalError,
     SubmissionNotFoundError,
@@ -53,45 +52,53 @@ MAX_TOP_SUBMISSIONS = 100
 TOP_SUBMISSIONS_CACHE_TIMEOUT = 300
 
 
-def create_external_grader_detail(submission, event_data):
+def create_external_grader_detail(student_item_dict, answer, **external_grader_detail):
     """
-    Creates a ExternalGraderDetail for a given submission.
+    Creates a submission and an associated ExternalGraderDetail record.
 
     Args:
-        submission (Submission): The submission object to create a queue record for.
-        event_data (dict): Data to be included in the queue record. Must include a 'queue_name' key.
+        student_item_dict (dict): The student_item this submission is associated with.
+            This is used to determine which course, student, and location the submission belongs to.
+
+        answer (JSON-serializable): The answer given by the student to be assessed.
+
+        external_grader_detail: Keyword arguments containing data for the external grader detail.
+            Must include a 'queue_name' key. May optionally include 'grader_file_name' and 'points_possible'.
 
     Returns:
-        ExternalGraderDetail: The created queue record.
+        ExternalGraderDetail: The created external grader detail record that references the submission.
 
     Raises:
-        ExternalGraderQueueCanNotBeEmptyError: If event_data doesn't contain required queue_name.
-        SubmissionInternalError: If there's an error creating the queue record.
+        ExternalGraderQueueEmptyError: If external_grader_detail doesn't contain required queue_name.
+        SubmissionInternalError: If there's an error creating the submission or external grader detail.
     """
 
-    if not event_data.get('queue_name'):
-        raise ExternalGraderQueueCanNotBeEmptyError("event_data must contain 'queue_name'")
+    submission = create_submission(student_item_dict, answer)
+    submission_uuid = submission.get('uuid')
+
+    if not external_grader_detail.get('queue_name'):
+        raise ExternalGraderQueueEmptyError("external_grader_detail must contain 'queue_name'")
 
     try:
-        queue_record = ExternalGraderDetail.objects.create(
-            submission=submission,
-            queue_name=event_data['queue_name'],
-            grader_file_name=event_data.get('grader_file_name', ''),
-            points_possible=event_data.get('points_possible', 1),
-            queue_key=event_data.get('queue_key', ''),
+        instance = ExternalGraderDetail.create_from_uuid(
+            submission_uuid=submission_uuid,
+            queue_name=external_grader_detail['queue_name'],
+            grader_file_name=external_grader_detail.get('grader_file_name', ''),
+            points_possible=external_grader_detail.get('points_possible', 1),
+            queue_key=external_grader_detail.get('queue_key', ''),
         )
 
-        files_dict = event_data.get('files')
+        files_dict = external_grader_detail.get('files')
         if files_dict:
-            file_manager = SubmissionFileManager(queue_record)
+            file_manager = SubmissionFileManager(instance)
             file_manager.process_files(files_dict)
 
-        return queue_record
+        return instance
 
     except DatabaseError as error:
         error_message = (
-            f"An error occurred while creating queue record for submission {submission.uuid} "
-            f"with event data: {event_data}"
+            f"An error occurred while creating queue record for submission {submission_uuid} "
+            f"with event data: {external_grader_detail}"
         )
         logger.exception(error_message)
         raise SubmissionInternalError(error_message) from error
@@ -103,7 +110,6 @@ def create_submission(
     submitted_at=None,
     attempt_number=None,
     team_submission=None,
-    **event_data
 ):
     """
     Creates a submission for assessment.
@@ -129,9 +135,6 @@ def create_submission(
         team_submission (TeamSubmission, optional): The team submission this individual
             submission is associated with, if any.
 
-        event_data (dict, optional): If provided, creates a ExternalGraderDetail
-            for this submission. Must contain at least a ``queue_name`` key.
-
     Returns:
         dict: A representation of the created Submission. The submission contains
         five attributes: student_item, attempt_number, submitted_at, created_at,
@@ -153,8 +156,6 @@ def create_submission(
             - Submitted time is invalid
 
         SubmissionInternalError: Raised when submission access causes an internal error.
-
-        ValueError: If event_data is provided but missing required queue_name.
 
     Examples:
         >>> student_item_dict = {
@@ -204,10 +205,7 @@ def create_submission(
         if not submission_serializer.is_valid():
             raise SubmissionRequestError(field_errors=submission_serializer.errors)
 
-        submission_instance = submission_serializer.save()
-
-        if event_data.get("queue_name"):
-            create_external_grader_detail(submission_instance, event_data)
+        submission_serializer.save()
 
         sub_data = submission_serializer.data
         _log_submission(sub_data, student_item_dict)
