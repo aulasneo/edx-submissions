@@ -83,6 +83,7 @@ def create_external_grader_detail(student_item_dict, answer, **external_grader_d
             queue_name=external_grader_detail['queue_name'],
             grader_file_name=external_grader_detail.get('grader_file_name', ''),
             points_possible=external_grader_detail.get('points_possible', 1),
+            queue_key=external_grader_detail.get('queue_key', ''),
         )
 
         files_dict = external_grader_detail.get('files')
