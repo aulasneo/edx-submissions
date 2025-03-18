@@ -75,7 +75,7 @@ class TestXqueueViewSet(APITestCase):
     @patch('submissions.views.xqueue.uuid.uuid4', return_value=str(uuid.uuid4()))
     def test_get_submission_success(self, mock_uuid, _):
         """Test successfully retrieving a submission from the queue."""
-        queue_name = 'prueba'
+        queue_name = 'test_queue'
         self.client.login(username='testuser', password='testpass')
         new_submission = SubmissionFactory()
         submission_queue_record = ExternalGraderDetailFactory(

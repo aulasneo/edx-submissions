@@ -1,5 +1,6 @@
 """Xqueue View set"""
 
+from datetime import timedelta
 import json
 import logging
 import uuid
@@ -117,6 +118,7 @@ class XqueueViewSet(viewsets.ViewSet):
         - Submission data with pull information if successful
         - Error message if queue is empty or invalid
         """
+
         queue_name = request.query_params.get('queue_name')
 
         if not queue_name:
@@ -125,69 +127,95 @@ class XqueueViewSet(viewsets.ViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # if queue_name not in settings.XQUEUES: TODO: Define how to set this variable,
-        #  maybe as a tutor config or hardcoded en edx platform
-        # if queue_name not in {'my_course_queue': 'http://172.16.0.220:8125', 'test-pull': None}:
-        #    return Response(
-        #        {'success': False, 'message': f"Queue '{queue_name}' not found"},
-        #        status=status.HTTP_404_NOT_FOUND
-        #    )
+        timeout_threshold = timezone.now() - timedelta(minutes=5)
 
-        submission_record = ExternalGraderDetail.objects.filter(
-            queue_name=queue_name,
-            status__in=['pending']
-        ).select_related('submission').order_by('status_time').first()
-
-        if not submission_record:
-            return Response(
-                self.compose_reply(False, f"Queue '{queue_name}' is empty"),
-                status=status.HTTP_404_NOT_FOUND
+        # **Bloqueo manual para evitar doble procesamiento**
+        with transaction.atomic(): #validar para quitar atomic
+            submission_record = (
+                ExternalGraderDetail.objects
+                .select_for_update()  # Bloquea la fila para evitar que otro proceso la seleccione simultáneamente
+                .filter(queue_name=queue_name, status='pending', pullkey__isnull=True) # quitar pullkey__isnull
+                .select_related('submission')
+                .order_by('status_time')
+                .first()
             )
 
-        try:
-            pull_time = timezone.now()
-            pullkey = str(uuid.uuid4())
-            # grader_id = request.META.get('REMOTE_ADDR', '')
-            submission_record.update_status('pulled')
-            submission_record.pullkey = pullkey
-            submission_record.status_time = pull_time
-            submission_record.save(update_fields=['pullkey', 'status_time'])
+            # Si no hay submissions en 'pending', buscar atascadas en 'pulled'
+            if not submission_record: #validar para quitar segunda condicion
+                submission_record = (
+                    ExternalGraderDetail.objects
+                    .select_for_update()
+                    .filter(queue_name=queue_name, status='pulled', status_time__lt=timeout_threshold)
+                    .order_by('status_time')
+                    .first()
+                )
 
-            ext_header = {
-                'submission_id': submission_record.submission.id,
-                'submission_key': pullkey
-            }
-            answer = submission_record.submission.answer
-            submission_data = {
-                "grader_payload": json.dumps({
-                    "grader": submission_record.grader_file_name
-                }),
-                "student_info": json.dumps({
-                    "anonymous_student_id": str(submission_record.submission.student_item.student_id,),
-                    "submission_time": str(int(submission_record.created_at.timestamp())),
-                    "random_seed": 1
-                }),
-                "student_response": answer
-            }
+                # Si encontramos una submission atascada, la marcamos como 'failed' antes de regresarla a 'pending'
+                if submission_record:
+                    submission_record.update_status('failed')
+                    submission_record.pullkey = None
+                    submission_record.save(update_fields=['status', 'status_time', 'pullkey'])
 
-            file_manager = SubmissionFileManager(submission_record)
+                    # Ahora sí podemos devolverlo a 'pending'
+                    submission_record.update_status('pending')
+                    submission_record.save(update_fields=['status', 'status_time'])
 
-            payload = {
-                'xqueue_header': json.dumps(ext_header),
-                'xqueue_body': json.dumps(submission_data),
-                'xqueue_files': json.dumps(file_manager.get_files_for_grader())
-            }
+            if submission_record:
+                try:
+                    pull_time = timezone.now()
+                    pullkey = str(uuid.uuid4())
 
-            return Response(
-                self.compose_reply(True, content=json.dumps(payload)),
-                status=status.HTTP_200_OK
-            )
+                    # **Verificar si ya ha sido tomada antes de asignar pullkey**
+                    if submission_record.pullkey:
+                        return Response(
+                            self.compose_reply(False, "Submission already in process"),
+                            status=status.HTTP_409_CONFLICT
+                        )
 
-        except ValueError as e:
-            return Response(
-                self.compose_reply(False, f"Error processing submission: {str(e)}"),
-                status=status.HTTP_400_BAD_REQUEST
-            )
+                    submission_record.update_status('pulled')
+                    submission_record.pullkey = pullkey
+                    submission_record.status_time = pull_time
+                    submission_record.save(update_fields=['pullkey', 'status_time'])
+
+                    ext_header = {
+                        'submission_id': submission_record.submission.id,
+                        'submission_key': pullkey
+                    }
+                    answer = submission_record.submission.answer
+                    submission_data = {
+                        "grader_payload": json.dumps({"grader": submission_record.grader_file_name}),
+                        "student_info": json.dumps({
+                            "anonymous_student_id": str(submission_record.submission.student_item.student_id),
+                            "submission_time": str(int(submission_record.created_at.timestamp())),
+                            "random_seed": 1
+                        }),
+                        "student_response": answer
+                    }
+
+                    file_manager = SubmissionFileManager(submission_record)
+
+                    payload = {
+                        'xqueue_header': json.dumps(ext_header),
+                        'xqueue_body': json.dumps(submission_data),
+                        'xqueue_files': json.dumps(file_manager.get_files_for_grader())
+                    }
+
+                    return Response(
+                        self.compose_reply(True, content=json.dumps(payload)),
+                        status=status.HTTP_200_OK
+                    )
+
+                except ValueError as e:
+                    return Response(
+                        self.compose_reply(False, f"Error processing submission: {str(e)}"),
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+        return Response(
+            self.compose_reply(False, f"Queue '{queue_name}' is empty"),
+            status=status.HTTP_404_NOT_FOUND
+        )
+
 
     @action(detail=False, methods=['post'], url_name='put_result')
     @transaction.atomic
